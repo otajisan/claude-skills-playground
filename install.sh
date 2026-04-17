@@ -92,7 +92,7 @@ else
   # not already present anywhere under that event.
   while IFS= read -r event; do
     while IFS= read -r entry; do
-      cmd="$(echo "$entry" | jq -r '.command')"
+      cmd="$(printf '%s' "$entry" | jq -r '.command')"
       exists="$(jq --arg e "$event" --arg c "$cmd" '
         [ (.hooks // {})[$e] // [] | .[] | .hooks // [] | .[] | .command ]
         | index($c) != null
