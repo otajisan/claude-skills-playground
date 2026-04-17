@@ -83,9 +83,11 @@ else
     echo '{}' > "$SETTINGS_FILE"
   fi
 
-  # Snapshot before modifying, so user can recover prior state.
-  mkdir -p "$BACKUP_DIR"
-  cp "$SETTINGS_FILE" "$BACKUP_DIR/settings.json.bak.$(date +%Y%m%d%H%M%S)"
+  # Stage changes on a work copy; only promote + back up the original if
+  # something actually changed. Avoids littering .backups/ on no-op runs.
+  WORK_FILE="$SETTINGS_FILE.work.$$"
+  trap 'rm -f "$WORK_FILE" "$WORK_FILE.tmp"' EXIT
+  cp "$SETTINGS_FILE" "$WORK_FILE"
 
   added=0
   deduped=0
@@ -99,7 +101,7 @@ else
       exists="$(jq --arg e "$event" --arg c "$cmd" '
         [ (.hooks // {})[$e] // [] | .[] | .hooks // [] | .[] | .command ]
         | index($c) != null
-      ' "$SETTINGS_FILE")"
+      ' "$WORK_FILE")"
 
       if [ "$exists" = "true" ]; then
         echo "  skip: [$event] $cmd (already configured)"
@@ -111,12 +113,21 @@ else
         .hooks //= {}
         | .hooks[$e] //= []
         | .hooks[$e] += [ { hooks: [ $h ] } ]
-      ' "$SETTINGS_FILE" > "$SETTINGS_FILE.tmp"
-      mv "$SETTINGS_FILE.tmp" "$SETTINGS_FILE"
+      ' "$WORK_FILE" > "$WORK_FILE.tmp"
+      mv "$WORK_FILE.tmp" "$WORK_FILE"
       echo "  add:  [$event] $cmd"
       added=$((added + 1))
     done < <(jq -c --arg e "$event" '.[$e][]' "$HOOKS_CONFIG")
   done < <(jq -r 'keys[]' "$HOOKS_CONFIG")
+
+  if [ "$added" -gt 0 ]; then
+    mkdir -p "$BACKUP_DIR"
+    cp "$SETTINGS_FILE" "$BACKUP_DIR/settings.json.bak.$(date +%Y%m%d%H%M%S)"
+    mv "$WORK_FILE" "$SETTINGS_FILE"
+  else
+    rm -f "$WORK_FILE"
+  fi
+  trap - EXIT
 
   echo "  settings.json: ${added} added, ${deduped} already present"
 fi
