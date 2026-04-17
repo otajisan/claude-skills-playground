@@ -75,6 +75,9 @@ if [ ! -f "$HOOKS_CONFIG" ]; then
 elif ! command -v jq >/dev/null 2>&1; then
   echo "  ! jq not found — skipping settings.json merge"
   echo "    install jq, then re-run: brew install jq"
+elif ! jq empty "$HOOKS_CONFIG" >/dev/null 2>&1; then
+  echo "  ! $HOOKS_CONFIG is not valid JSON — skipping settings.json merge"
+  exit 1
 else
   if [ ! -f "$SETTINGS_FILE" ]; then
     echo '{}' > "$SETTINGS_FILE"
