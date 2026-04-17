@@ -1,47 +1,92 @@
 ---
 name: review-apply
-description: レビュー指摘内容を確認して必要に応じて対応する。「レビューに対応して」「指摘を反映して」「レビューコメント対応」「レビュー結果を反映」などと言われたら必ずこのSkillを使う。引数にPR URL、貼り付けたレビューテキスト、または直前の/reviewの出力結果を取る。GitHub PRの場合は各コメントへの返信も行う。
-allowed-tools: Bash(gh pr view:*), Bash(gh pr comment:*), Bash(gh pr diff:*), Bash(gh api:*), Bash(git diff:*), Bash(git log:*), Bash(git status:*), Bash(git add:*), Bash(git commit:*)
+description: レビュー指摘内容を確認して必要に応じて対応する。「レビューに対応して」「指摘を反映して」「レビューコメント対応」「レビュー結果を反映」「セルフレビュー」などと言われたら必ずこのSkillを使う。引数に PR URL、貼り付けたレビューテキスト、直前の `/review` の出力結果、または引数なし（セルフレビューモード）を取る。GitHub PR の場合は各コメントへの返信も行う。
+allowed-tools: Bash(gh pr view:*), Bash(gh pr comment:*), Bash(gh pr diff:*), Bash(gh api:*), Bash(git diff:*), Bash(git log:*), Bash(git status:*), Bash(git branch:*), Bash(git add:*), Bash(git commit:*), Read, Grep, Glob, Edit, Write
 ---
 
 # Review Apply Skill
 
-レビュー指摘を確認し、必要に応じてコードを修正する。GitHub PRの場合は各コメントに返信まで行う。
+レビュー指摘を確認し、必要に応じてコードを修正する。GitHub PR の場合は各コメントに返信まで行う。
 
 ---
 
-## Step 0: 入力ソースの判定
+## Step 0: モード判定
 
-`$ARGUMENTS` から入力ソースを判定する。
+`$ARGUMENTS` と会話文脈から **4 つのモード** のいずれかに振り分ける。
 
-| 入力 | ソース種別 | 処理 |
-|---|---|---|
-| `https://github.com/*/pull/*` 形式のURL | **PRモード** | GitHub APIから取得 |
-| URL以外のテキスト（複数行含む） | **テキストモード** | そのままレビュー内容として扱う |
-| 空 または「直前」「上の」等の指定 | **コンテキストモード** | 直前の `/review` 出力や会話中のレビュー結果を抽出 |
+| 入力 / 文脈 | モード | GitHub 連携 | 備考 |
+|---|---|---|---|
+| `https://github.com/*/pull/*` 形式の URL | **① Remote PR** | ✅ あり | GitHub からレビューを取得 → 反映 → 各コメントに返信 |
+| URL 以外のテキスト（複数行可） | **② 貼り付けテキスト** | ❌ なし | 引数をそのままレビューとして扱う |
+| 空 + 会話内に直前の `/review` 出力や明確なレビュー結果あり | **③ 会話コンテキスト** | ❌ なし | 会話から指摘を抽出（セルフレビュー結果の反映を含む） |
+| 空 + 会話にレビュー結果なし + ローカルに差分あり | **④ セルフレビュー** | ❌ なし | 自分でレビューを実施 → 承認を取って反映 |
+
+> **④ が今回追加されたモード**。`/review` → `/review-apply` を一度に回すユースケース。
+
+判定後、ユーザーに選択したモードを 1 行で伝えてから次のステップへ進む。
 
 ---
 
 ## Step 1: レビュー内容を取得
 
-### PRモード
+### ① Remote PR モード
 
-URLから `owner` / `repo` / `number` を抽出した上で：
+URL から `owner` / `repo` / `number` を**明示的に抽出**してから `gh` を叩く。`gh api` の `{owner}` / `{repo}` は自動展開されるが `{number}` は展開されない。
 
+```bash
+# URL = https://github.com/<owner>/<repo>/pull/<number>
+PR_URL="$ARGUMENTS"
+PR_NUMBER="$(echo "$PR_URL" | sed -E 's#.*/pull/([0-9]+).*#\1#')"
+
+# 取得
+gh pr view "$PR_URL" --json number,title,body,state,reviewDecision,headRefName,reviews,comments
+gh api "repos/{owner}/{repo}/pulls/${PR_NUMBER}/comments"   # 行コメント
+gh pr diff "$PR_URL"
 ```
-PR 情報:        !`gh pr view $ARGUMENTS --json number,title,body,state,reviewDecision,headRefName`
-レビュー:       !`gh pr view $ARGUMENTS --json reviews`
-行コメント:     !`gh api repos/{owner}/{repo}/pulls/{number}/comments`
-一般コメント:   !`gh pr view $ARGUMENTS --json comments`
-PR 差分:        !`gh pr diff $ARGUMENTS`
+
+> 行コメント（`pulls/{n}/comments`）と Issue コメント（`pr view --json comments`）は別 API なので両方取得する。各行コメントの `id` を控えておく（Step 4 の返信で使用）。
+
+### ② 貼り付けテキスト / ③ 会話コンテキスト モード
+
+会話内（または `$ARGUMENTS`）のレビュー指摘を **抜け漏れなく** 抽出し、番号付きで列挙する。件数をユーザーに提示してから Step 2 に進む。
+
+### ④ セルフレビュー モード
+
+自分でレビューを実施する。以下を収集してから分析：
+
+```bash
+git status
+git branch --show-current
+# ベースブランチ差分（main が無ければ master / develop へフォールバック）
+git log main..HEAD --oneline 2>/dev/null || git log master..HEAD --oneline 2>/dev/null || git log develop..HEAD --oneline
+git diff main...HEAD 2>/dev/null || git diff master...HEAD 2>/dev/null || git diff develop...HEAD
+# 未コミットも含めたい場合は下記も参照
+git diff
+git diff --staged
 ```
 
-> 行コメント（`pulls/{n}/comments`）とIssueコメント（`pr view --json comments`）は別APIなので両方取得する。
+観点（`/review` と同じ）:
+- 正しさ（バグ・エッジケース）
+- プロジェクト規約との整合
+- パフォーマンス
+- セキュリティ
+- テストカバレッジ
 
-### テキスト / コンテキストモード
+レビュー結果を以下フォーマットでユーザーに **先に提示**：
 
-会話内のレビュー指摘を **抜け漏れなく** 抽出し、番号付きで列挙する。
-検出した指摘の件数をユーザーに提示してから Step 2 に進む。
+```markdown
+## セルフレビュー結果
+
+対象ブランチ: {branch}（{N} コミット / {M} ファイル変更）
+
+### 指摘
+
+1. **{ファイル}:{行}** — {概要} [🟡 Minor / 🔴 Major / 🟢 Nit]
+   {詳細1〜2行}
+2. ...
+```
+
+**提示した時点では修正に着手しない**。ユーザーに「この指摘に対応してよいか」を確認してから Step 2 へ進む（セルフ反映の暴走防止）。
 
 ---
 
@@ -64,6 +109,8 @@ PR 差分:        !`gh pr diff $ARGUMENTS`
 
 **判断に迷う指摘は、修正前にユーザーに確認する**。小出しではなく、曖昧な指摘をまとめて一度に質問する。
 
+> セルフレビューモード（④）では自分の指摘を自分で分類することになるため、**特に「対応する」に倒しすぎない**。自作レビューは過剰になりがち。
+
 ---
 
 ## Step 3: コードを修正
@@ -72,18 +119,20 @@ PR 差分:        !`gh pr diff $ARGUMENTS`
 
 - 指摘単位でコミットを分ける（例: `fix: address review comment about XXX`）
 - 該当箇所のテスト・動作確認を行う
-- コミット後、ハッシュ（短縮形で可）を記録しておく（Step 4 の返信で使用）
+- コミット後、ハッシュ（短縮形で可）を記録しておく（Step 4 の返信／Step 5 のサマリで使用）
 
 ---
 
-## Step 4: レビューコメントに返信（PRモードのみ）
+## Step 4: レビューコメントに返信（① Remote PR モードのみ）
 
 各コメントに返信する。**行コメントと一般コメントで API が異なる** 点に注意。
+
+② ③ ④ モードではこの Step はスキップし、Step 5 のサマリ出力のみ行う。
 
 ### 行コメントへの返信（該当コメントへのスレッド返信）
 
 ```bash
-gh api repos/{owner}/{repo}/pulls/{number}/comments \
+gh api "repos/{owner}/{repo}/pulls/${PR_NUMBER}/comments" \
   -X POST \
   -f body="{返信内容}" \
   -F in_reply_to={元コメントID}
@@ -92,7 +141,7 @@ gh api repos/{owner}/{repo}/pulls/{number}/comments \
 ### PR 全体への一般コメント・サマリ返信
 
 ```bash
-gh pr comment $ARGUMENTS --body "{内容}"
+gh pr comment "$PR_URL" --body "{内容}"
 ```
 
 ### 返信フォーマット
@@ -116,14 +165,15 @@ gh pr comment $ARGUMENTS --body "{内容}"
 ```markdown
 ## レビュー対応サマリ
 
-対象: {PR URL / 貼り付けテキスト / 直前のレビュー結果}
+モード: ① Remote PR / ② 貼り付け / ③ 会話コンテキスト / ④ セルフレビュー
+対象: {PR URL / 貼り付けテキスト / 直前のレビュー結果 / ローカル差分}
 
 | # | 指摘概要 | 分類 | 結果 |
 |---|---|---|---|
-| 1 | 〇〇のnullチェック漏れ | ✅ 対応 | `abc1234` |
-| 2 | 変数名をcamelCaseに | 🔄 部分対応 | `def5678` / 一部のみ変更 |
+| 1 | 〇〇の null チェック漏れ | ✅ 対応 | `abc1234` |
+| 2 | 変数名を camelCase に | 🔄 部分対応 | `def5678` / 一部のみ変更 |
 | 3 | クラス分割の提案 | ❌ 見送り | 理由: 現状のサイズでは過剰設計 |
-| 4 | typoの修正 | ✨ 対応済み | `ghi9012`（前コミットで対応済み） |
+| 4 | typo の修正 | ✨ 対応済み | `ghi9012`（前コミットで対応済み） |
 
 **合計**: 対応 X件 / 部分 X件 / 見送り X件 / 既対応 X件
 ```
@@ -133,6 +183,7 @@ gh pr comment $ARGUMENTS --body "{内容}"
 ## 共通方針
 
 - 指摘を **機械的に全て反映しない**。判断を挟むことが品質確保の要
-- PRモードで見送りを判断したコメントにも **必ず返信する**（無言で放置しない）
+- ① Remote PR モードで見送りを判断したコメントにも **必ず返信する**（無言で放置しない）
+- ④ セルフレビューモードでは **必ずレビュー結果の提示→ユーザー承認→反映** の順。承認前にコードを触らない
 - 対応前後でテストが通ることを確認する
-- $ARGUMENTS が空かつ会話に明確なレビュー結果が見当たらない場合は、入力を求める
+- `$ARGUMENTS` が空かつ会話に明確なレビュー結果が見当たらず、ローカルにも差分が無い場合は、入力を求める

@@ -6,6 +6,11 @@
 
 INPUT=$(cat)
 
+# ── 0. jq 未導入環境ではスキップ ───────────────────────────────
+if ! command -v jq >/dev/null 2>&1; then
+  exit 0
+fi
+
 # ── 1. 無限ループ防止 ──────────────────────────────────────────
 STOP_HOOK_ACTIVE=$(echo "$INPUT" | jq -r '.stop_hook_active // false')
 if [ "$STOP_HOOK_ACTIVE" = "true" ]; then
