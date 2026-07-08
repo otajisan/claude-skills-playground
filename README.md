@@ -19,7 +19,7 @@ Claude Code の Skill 機能を活用し、日常の開発ワークフローを�
 
 | フック | イベント | 説明 |
 |---|---|---|
-| [workflow-reminder](hooks/workflow-reminder.sh) | `Stop` | フィーチャーブランチにコミットがあるのに PR 未作成の状態で応答を終えようとしたとき、`/review → /review-apply → /readme-sync → /pr-create` のワークフローをリマインドする |
+| [workflow-reminder](hooks/workflow-reminder.sh) | `Stop` | git 状態に応じて実装完了ワークフローを 2 段階で誘導する。**①** ベースブランチ上に変更があれば作業ブランチの作成を促す。**②** フィーチャーブランチにコミットがあるのに PR 未作成なら「レビュー→修正ループ（`/code-review` → `/codex:review` → セキュリティレビュー → `/review-apply`）→ `/readme-sync` → `/pr-create`」を促す |
 
 ## インストール
 
