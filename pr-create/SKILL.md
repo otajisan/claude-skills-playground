@@ -11,11 +11,11 @@ allowed-tools: Bash(git diff:*), Bash(git log:*), Bash(git status:*), Bash(git b
 まず以下を実行して変更内容を把握する：
 
 - 現在のブランチ: !`git branch --show-current`
-- ベースブランチとの差分サマリ: !`git diff main...HEAD --stat`
-- 詳細差分: !`git diff main...HEAD`
-- コミット一覧: !`git log main..HEAD --oneline`
+- ベースブランチとの差分サマリ: !`git diff main...HEAD --stat 2>/dev/null || git diff master...HEAD --stat 2>/dev/null || git diff develop...HEAD --stat`
+- 詳細差分: !`git diff main...HEAD 2>/dev/null || git diff master...HEAD 2>/dev/null || git diff develop...HEAD`
+- コミット一覧: !`git log main..HEAD --oneline 2>/dev/null || git log master..HEAD --oneline 2>/dev/null || git log develop..HEAD --oneline`
 
-> ベースブランチが `main` でない場合（`develop` など）は、差分コマンドのブランチ名を適宜読み替える。
+> ベースブランチは `main` → `master` → `develop` の順にフォールバックする。いずれとも異なる場合はブランチ名を読み替えて再実行する。
 > `$ARGUMENTS` に追加指示がある場合はそちらを優先する。
 
 ---

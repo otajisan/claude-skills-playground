@@ -1,0 +1,27 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: shellcheck
+        run: shellcheck install.sh hooks/*.sh
+
+      - name: validate hooks.json
+        run: jq empty hooks/hooks.json
+
+      - name: install.sh smoke test (idempotency)
+        run: |
+          export HOME="$(mktemp -d)"
+          ./install.sh
+          # 2 回目はすべて skip になるはず（冪等性の確認）
+          ./install.sh | tee second-run.log
+          grep -q "0 added" second-run.log
+          jq empty "$HOME/.claude/settings.json"
