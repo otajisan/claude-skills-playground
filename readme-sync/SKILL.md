@@ -169,12 +169,12 @@ curl -X POST http://localhost:8080/api/v1/resources \
 
 ```
 現在のREADME:   !`cat README.md`
-ブランチ差分:   !`git diff main...HEAD --stat`
-詳細差分:       !`git diff main...HEAD`
-コミット一覧:   !`git log main..HEAD --oneline`
+ブランチ差分:   !`git diff main...HEAD --stat 2>/dev/null || git diff master...HEAD --stat 2>/dev/null || git diff develop...HEAD --stat`
+詳細差分:       !`git diff main...HEAD 2>/dev/null || git diff master...HEAD 2>/dev/null || git diff develop...HEAD`
+コミット一覧:   !`git log main..HEAD --oneline 2>/dev/null || git log master..HEAD --oneline 2>/dev/null || git log develop..HEAD --oneline`
 ```
 
-> ベースブランチが `main` でない場合は適宜読み替える。
+> ベースブランチは `main` → `master` → `develop` の順にフォールバックする。いずれとも異なる場合は読み替える。
 
 ### Step 2: 更新箇所を判定する
 
