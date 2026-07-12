@@ -16,8 +16,9 @@ skipped=0
 backup_existing() {
   local target="$1"
   local label="$2"
+  local backup
   mkdir -p "$BACKUP_DIR"
-  local backup="$BACKUP_DIR/${label}.bak.$(date +%Y%m%d%H%M%S)"
+  backup="$BACKUP_DIR/${label}.bak.$(date +%Y%m%d%H%M%S)"
   echo "  backup: $target -> $backup"
   mv "$target" "$backup"
 }
@@ -35,7 +36,8 @@ link_dir() {
     return
   fi
 
-  if [ -e "$target" ]; then
+  # -e follows symlinks, so a dangling link needs the extra -L check
+  if [ -e "$target" ] || [ -L "$target" ]; then
     backup_existing "$target" "$name"
   fi
 
@@ -76,11 +78,14 @@ elif ! command -v jq >/dev/null 2>&1; then
   echo "  ! jq not found — skipping settings.json merge"
   echo "    install jq, then re-run: brew install jq"
 elif ! jq empty "$HOOKS_CONFIG" >/dev/null 2>&1; then
-  echo "  ! $HOOKS_CONFIG is not valid JSON — skipping settings.json merge"
+  echo "  ! $HOOKS_CONFIG is not valid JSON — aborting"
   exit 1
 else
   if [ ! -f "$SETTINGS_FILE" ]; then
     echo '{}' > "$SETTINGS_FILE"
+  elif ! jq empty "$SETTINGS_FILE" >/dev/null 2>&1; then
+    echo "  ! $SETTINGS_FILE is not valid JSON — fix it manually, then re-run"
+    exit 1
   fi
 
   # Stage changes on a work copy; only promote + back up the original if
