@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # ~/.claude/hooks/workflow-reminder.sh
 #
 # Stopイベント時に git 状態を判定し、実装完了ワークフローをClaudeに促す。

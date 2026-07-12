@@ -3,7 +3,7 @@
     {
       "type": "command",
       "command": "bash ~/.claude/hooks/workflow-reminder.sh",
-      "timeout": 10
+      "timeout": 30
     }
   ]
 }
