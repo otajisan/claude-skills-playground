@@ -10,9 +10,9 @@ Claude Code の Skill 機能を活用し、日常の開発ワークフローを�
 
 | スキル | 説明 | トリガー例 |
 |---|---|---|
-| [pr-create](pr-create/SKILL.md) | git diff を分析し、概要・技術スタック・Mermaid 図解を含む PR 説明を自動生成する | `PRを作って` `PR作成` `プルリク` |
+| [pr-create](pr-create/SKILL.md) | git diff を分析して概要・技術スタック・Mermaid 図解を含む PR 説明を生成し、ラベル / Assignee / Project / マイルストーン / 関連 Issue まで埋めて PR を作成する | `PRを作って` `PR作成` `プルリク` |
 | [readme-sync](readme-sync/SKILL.md) | プロジェクト構造を解析して README を新規作成、または PR の変更内容に合わせて既存 README を更新する | `READMEを作って` `READMEを更新して` `readme書いて` |
-| [refinement](refinement/SKILL.md) | GitHub Issue をコードベースとすりあわせて実装プランをドラフトし、Issue 本文に追記する | `refinement` `Issueを整理して` `実装プランを立てて` |
+| [refinement](refinement/SKILL.md) | GitHub Issue をコードベースとすりあわせて実装プランをドラフトし、Issue 本文に追記する。ラベル / Assignee / Project / マイルストーン / Issue Type の欠けも補完する | `refinement` `Issueを整理して` `実装プランを立てて` |
 | [review-apply](review-apply/SKILL.md) | レビュー指摘（Remote PR / 貼り付け / 会話 / セルフ）を分類して反映し、Remote PR なら各コメントに返信する | `レビューに対応して` `指摘を反映して` `セルフレビュー` |
 
 ## フック一覧
