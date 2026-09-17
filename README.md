@@ -14,6 +14,7 @@ Claude Code の Skill 機能を活用し、日常の開発ワークフローを�
 | [readme-sync](readme-sync/SKILL.md) | プロジェクト構造を解析して README を新規作成、または PR の変更内容に合わせて既存 README を更新する | `READMEを作って` `READMEを更新して` `readme書いて` |
 | [refinement](refinement/SKILL.md) | GitHub Issue をコードベースとすりあわせて実装プランをドラフトし、Issue 本文に追記する。ラベル / Assignee / Project / マイルストーン / Issue Type の欠けも補完する | `refinement` `Issueを整理して` `実装プランを立てて` |
 | [review-apply](review-apply/SKILL.md) | レビュー指摘（Remote PR / 貼り付け / 会話 / セルフ）を分類して反映し、Remote PR なら各コメントに返信する | `レビューに対応して` `指摘を反映して` `セルフレビュー` |
+| [adk-agent](adk-agent/SKILL.md) | Google ADK のエージェント / マルチエージェントを設計・実装・評価・堅牢化・レビュー・デプロイする。書籍『現場で役立つマルチエージェントAI設計入門（A2A × ADK）』の 3 軸体系・設計原則 10・アンチパターン 12・レビューチェックリスト 29 項目を Agentic Coding で実践。6 モード（design / scaffold / eval / harden / review / deploy）+ `references/`（段階的読み込み）+ `templates/`（ADK v2.2.0 準拠の骨格） | `ADK でエージェントを設計して` `/adk-agent review ./my_agent` `adk eval の評価セットを作って` |
 
 ## フック一覧
 
@@ -51,6 +52,10 @@ claude-skills-playground/
 │   └── SKILL.md            # Issue refinement スキル定義
 ├── review-apply/
 │   └── SKILL.md            # レビュー反映スキル定義
+├── adk-agent/
+│   ├── SKILL.md            # ADK エージェント設計スキル（モードルーター）
+│   ├── references/         # 設計ガイド 14 本（原則 / アーキ / Context / Memory / 評価 / ガードレール / ツール / A2A / デプロイ / セキュリティ / アンチパターン / チェックリスト / モデル / CLI）
+│   └── templates/          # agent_package / eval / tests / harden / a2a / skills / ci / review の骨格
 ├── hooks/
 │   ├── hooks.json          # settings.json にマージするフック定義
 │   └── workflow-reminder.sh
@@ -64,6 +69,7 @@ claude-skills-playground/
 2. ディレクトリ内に `SKILL.md` を配置する
 3. YAML frontmatter で `name`, `description`, `allowed-tools` を定義する
 4. 本文にスキルの実行手順を Markdown で記述する
+5. 知識量が多いスキルは `references/`（必要時に Read する詳細ガイド）と `templates/`（生成物の骨格）に分け、`SKILL.md` は判定と手順のルーターに留める（`adk-agent` を参照）
 
 ## フックの追加方法
 

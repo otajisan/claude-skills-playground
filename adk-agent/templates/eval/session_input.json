@@ -1,0 +1,10 @@
+{
+  "app_name": "my_agent",
+  "user_id": "sim-user-001",
+  "state": {
+    "user:name": "テスト太郎",
+    "user:tier": "standard",
+    "user:role": "viewer",
+    "app:max_search_results": 5
+  }
+}

@@ -1,0 +1,46 @@
+# cloudbuild.yaml — pytest → adk eval（品質ゲート）→ adk deploy agent_engine（第 8 章 8.3.7）
+# 必要な Secret: Cloud Build の SA に aiplatform.user / storage.admin。GOOGLE_API_KEY は Secret Manager から。
+steps:
+  - id: unit-tests
+    name: "python:3.11"
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        pip install -r my_agent/requirements.txt
+        python -m pytest tests -q
+
+  - id: eval
+    name: "python:3.11"
+    entrypoint: bash
+    secretEnv: ["GOOGLE_API_KEY"]
+    env: ["GOOGLE_GENAI_USE_VERTEXAI=FALSE", "AGENT_ENV=dev"]
+    args:
+      - -c
+      - |
+        pip install "google-adk==2.2.0"
+        adk eval ./my_agent eval/eval_set.json --config_file_path eval/eval_config.json
+
+  - id: deploy
+    name: "python:3.11"
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        pip install "google-adk[gcp,otel-gcp]==2.2.0" \
+          "google-cloud-aiplatform[agent-engines]==1.153.1" \
+          "opentelemetry-exporter-otlp-proto-http==1.41.1"
+        adk deploy agent_engine ./my_agent \
+          --project $PROJECT_ID \
+          --region us-central1 \
+          --display_name "my-agent-${SHORT_SHA}" \
+          --agent_engine_config_file .agent_engine_config.json \
+          --otel_to_cloud
+
+availableSecrets:
+  secretManager:
+    - versionName: projects/$PROJECT_ID/secrets/google-api-key/versions/latest
+      env: GOOGLE_API_KEY
+
+options:
+  logging: CLOUD_LOGGING_ONLY
