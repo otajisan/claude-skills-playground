@@ -1,3 +1,5 @@
 .backups/
 .tmp/
 __pycache__/
+.env
+.envrc
