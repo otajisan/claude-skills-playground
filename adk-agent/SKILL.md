@@ -118,7 +118,7 @@ SessionService / Compaction（interval / overlap）/ Memory Bank・RAG の採否
 
 1. 対象エージェントのツールを **リスク × 可逆性** で分類し、承認基準 6 つ（影響範囲 / 可逆性 / 金額 / 権限 / 法的リスク / 前例）で HITL 対象を決める
 2. 5 層を配置する: L1 `before_model_callback`（インジェクション検出・レート制限・Kill Switch・エスカレーション判定）→ L2 Instruction のセキュリティルール → L3 `before_tool_callback`（RBAC・引数検証・実行回数制限・HITL 承認）→ L4 `after_tool_callback`（間接インジェクション検出・PII マスク）→ L5 `after_model_callback`（機密情報マスク）。全層で監査ログ
-3. `templates/harden/` の `kill_switch.py` / `escalation.py` / `execution_limiter.py` / `audit_logger.py` を取り込み、`callbacks.py` の合成に組み込む
+3. `templates/agent_package/harden/`（scaffold 済みなら `<pkg>/harden/`）の `kill_switch.py` / `escalation.py` / `approval.py` / `audit_logger.py` を `callbacks.py` の合成に組み込む（`execution_limiter` は既定で配線済み。カウンタは 1 つなので二重登録しない）
 4. ガードレール自体の pytest（正常通過 / 検出の両方）を追加する。ガードレール内の例外は **安全側に倒す**（try/except でブロック応答）
 5. 新規エージェントは **自律レベル 0（FULL_HITL）** から始め、承認率 95% 超で段階的に上げる方針を報告に書く
 

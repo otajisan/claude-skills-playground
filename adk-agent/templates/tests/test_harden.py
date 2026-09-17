@@ -1,7 +1,6 @@
 """harden/ のセキュリティ機構のユニットテスト（正常通過と検出の両方）。
 
-scaffold では harden/ を `my_agent/harden/` として取り込む想定。
-テンプレート検証時は harden をトップレベルパッケージとして import する。
+harden/ は agent_package（scaffold 後は my_agent/）配下に同居する。
 """
 
 from unittest.mock import MagicMock
@@ -9,11 +8,11 @@ from unittest.mock import MagicMock
 from google.adk.models import LlmRequest
 from google.genai import types
 
-from harden.approval import PENDING_KEY, check_approval, handle_approval_input
-from harden.audit_logger import audit_before_tool, mask_pii
-from harden.escalation import EscalationLevel, EscalationManager, escalation_callback, escalation_mgr, restricted_tool_callback
-from harden.execution_limiter import ExecutionLimiter
-from harden.kill_switch import before_model_kill_switch, before_tool_kill_switch, kill_switch
+from my_agent.harden.approval import PENDING_KEY, check_approval, handle_approval_input
+from my_agent.harden.audit_logger import audit_before_tool, mask_pii
+from my_agent.harden.escalation import EscalationLevel, EscalationManager, escalation_callback, escalation_mgr, restricted_tool_callback
+from my_agent.harden.execution_limiter import ExecutionLimiter
+from my_agent.harden.kill_switch import before_model_kill_switch, before_tool_kill_switch, kill_switch
 
 
 def _ctx(state: dict, agent_name: str = "my_agent") -> MagicMock:
@@ -115,10 +114,14 @@ class TestApproval:
         # 承認 → フラグが立つ
         result = handle_approval_input(_ctx(state), _request(f"承認: {request_id}"))
         assert result is not None and "承認されました" in result.content.parts[0].text
-        assert state["_approval_submit_expense"] is True
-        # 次の呼び出しは通り、フラグは消費される
-        assert check_approval(_tool("submit_expense"), {"amount": 800_000}, _ctx(state)) is None
-        assert state["_approval_submit_expense"] is False
+        assert state["_approval_submit_expense"]
+        # 別引数では通らず、再承認を求める（フラグは消費される）
+        other = check_approval(_tool("submit_expense"), {"amount": 900_000}, _ctx(state))
+        assert other["status"] == "approval_required" and state["_approval_submit_expense"] is None
+        handle_approval_input(_ctx(state), _request(f"承認: {other['request_id']}"))
+        # 同じ引数なら通り、フラグは消費される
+        assert check_approval(_tool("submit_expense"), {"amount": 900_000}, _ctx(state)) is None
+        assert state["_approval_submit_expense"] is None
 
     def test_rejection(self):
         state: dict = {}
@@ -131,6 +134,10 @@ class TestApproval:
 class TestAudit:
     def test_mask_and_log(self, caplog):
         assert mask_pii("taro@example.com 03-1234-5678") == "[EMAIL] [PHONE]"
+        ctx = _ctx({})
+        ctx.session.id = "sess-1"
+        ctx.user_id = "user-9"
         with caplog.at_level("INFO", logger="audit"):
-            assert audit_before_tool(_tool("get_record"), {"email": "taro@example.com"}, _ctx({"session_id": "s1"})) is None
+            assert audit_before_tool(_tool("get_record"), {"email": "taro@example.com"}, ctx) is None
         assert "[EMAIL]" in caplog.text and "example.com" not in caplog.text
+        assert "sess-1" in caplog.text and "user-9" in caplog.text

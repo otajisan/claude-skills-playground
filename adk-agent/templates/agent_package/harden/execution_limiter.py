@@ -11,6 +11,8 @@ from typing import Optional
 from google.adk import Context
 from google.adk.tools import BaseTool
 
+from ..config import config
+
 
 class ExecutionLimiter:
     """セッションあたりのツール実行回数を制限する（状態は State に持つ）。"""
@@ -46,4 +48,7 @@ class ExecutionLimiter:
         return None
 
 
-limiter = ExecutionLimiter()
+limiter = ExecutionLimiter(
+    max_calls_per_session=config.max_tool_calls_per_session,
+    max_calls_per_tool=config.max_tool_calls_per_tool,
+)

@@ -19,6 +19,8 @@ from google.adk.models import LlmRequest, LlmResponse
 from google.adk.tools import BaseTool
 from google.genai import types
 
+from .audit_logger import identity
+
 logger = logging.getLogger(__name__)
 
 HIGH_RISK_TOOLS: set[str] = {"delete_record", "transfer_funds", "execute_sql", "update_user_role"}
@@ -95,7 +97,7 @@ def _fixed(text: str) -> LlmResponse:
 
 def escalation_callback(callback_context: Context, llm_request: LlmRequest) -> Optional[LlmResponse]:
     """エスカレーションレベルに基づいてリクエストを制御する（before_model）。"""
-    user_id = callback_context.state.get("user_id", "unknown")
+    _, user_id = identity(callback_context)
     level = escalation_mgr.get_tracker(user_id).current_level
     if level == EscalationLevel.STOPPED:
         return _fixed("セキュリティ上の理由により、現在このサービスはご利用いただけません。")
@@ -106,7 +108,7 @@ def escalation_callback(callback_context: Context, llm_request: LlmRequest) -> O
 
 def restricted_tool_callback(tool: BaseTool, args: dict, tool_context: Context) -> Optional[dict]:
     """RESTRICTED 以上のユーザーには高リスクツールを拒否する（before_tool）。"""
-    user_id = tool_context.state.get("user_id", "unknown")
+    _, user_id = identity(tool_context)
     level = escalation_mgr.get_tracker(user_id).current_level
     if level >= EscalationLevel.RESTRICTED and tool.name in HIGH_RISK_TOOLS:
         return {"status": "error", "error": "現在このアカウントでは高リスクな操作が制限されています。管理者にお問い合わせください。"}

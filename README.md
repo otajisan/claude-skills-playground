@@ -55,7 +55,7 @@ claude-skills-playground/
 ├── adk-agent/
 │   ├── SKILL.md            # ADK エージェント設計スキル（モードルーター）
 │   ├── references/         # 設計ガイド 14 本（原則 / アーキ / Context / Memory / 評価 / ガードレール / ツール / A2A / デプロイ / セキュリティ / アンチパターン / チェックリスト / モデル / CLI）
-│   └── templates/          # agent_package / eval / tests / harden / a2a / skills / ci / review の骨格
+│   └── templates/          # agent_package（harden 同梱）/ eval / tests / a2a / skills / ci / review の骨格
 ├── hooks/
 │   ├── hooks.json          # settings.json にマージするフック定義
 │   └── workflow-reminder.sh

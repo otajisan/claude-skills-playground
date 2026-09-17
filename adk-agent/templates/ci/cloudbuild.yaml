@@ -7,6 +7,7 @@ steps:
     args:
       - -c
       - |
+        set -euo pipefail
         pip install -r my_agent/requirements.txt
         python -m pytest tests -q
 
@@ -18,6 +19,7 @@ steps:
     args:
       - -c
       - |
+        set -euo pipefail
         pip install "google-adk==2.2.0"
         adk eval ./my_agent eval/eval_set.json --config_file_path eval/eval_config.json
 
@@ -27,6 +29,7 @@ steps:
     args:
       - -c
       - |
+        set -euo pipefail
         pip install "google-adk[gcp,otel-gcp]==2.2.0" \
           "google-cloud-aiplatform[agent-engines]==1.153.1" \
           "opentelemetry-exporter-otlp-proto-http==1.41.1"

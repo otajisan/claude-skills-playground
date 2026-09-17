@@ -111,6 +111,17 @@ class TestValidateResponse:
         assert "[EMAIL]" in text and "[PHONE]" in text
         assert "example.com" not in text
 
+    def test_function_call_parts_preserved(self, state):
+        fc = types.Part(function_call=types.FunctionCall(name="get_record", args={"record_id": "REC-100"}))
+        resp = LlmResponse(content=types.Content(role="model", parts=[types.Part(text="taro@example.com に確認します"), fc]))
+        result = validate_response(_ctx(state), resp)
+        assert result is not None
+        assert result.content.parts[0].text == "[EMAIL] に確認します"
+        assert result.content.parts[1].function_call.name == "get_record"
+
+    def test_person_named_dan_not_blocked(self, state):
+        assert detect_prompt_injection(_ctx(state), _request("Dan さんの注文を確認して")) is None
+
 
 def test_mask_pii_helper():
     masked, changed = mask_pii("key=AIzaSyA-0123456789abcdefghijklmnopqrstuv")
@@ -140,10 +151,14 @@ class TestValidateToolArgs:
         assert validate_tool_args(_tool("read_file"), {"path": "../../etc/passwd"}, _ctx(state)) is not None
 
     def test_dangerous_sql_blocked(self, state):
-        assert validate_tool_args(_tool("query"), {"sql": "DROP TABLE users"}, _ctx(state)) is not None
+        assert validate_tool_args(_tool("execute_sql"), {"sql": "DROP TABLE users"}, _ctx(state)) is not None
+        assert validate_tool_args(_tool("bq_query"), {"query": "DELETE FROM users"}, _ctx(state)) is not None
 
     def test_readonly_sql_passes(self, state):
-        assert validate_tool_args(_tool("query"), {"sql": "SELECT * FROM items LIMIT 10"}, _ctx(state)) is None
+        assert validate_tool_args(_tool("execute_sql"), {"sql": "SELECT * FROM items LIMIT 10"}, _ctx(state)) is None
+
+    def test_free_text_query_not_treated_as_sql(self, state):
+        assert validate_tool_args(_tool("search_items"), {"query": "Windows Update の手順"}, _ctx(state)) is None
 
 
 class TestLimitToolCalls:
@@ -172,3 +187,8 @@ class TestAfterTool:
         response = {"status": "success", "results": list(range(12))}
         result = trim_tool_result(_tool("search_items"), {}, _ctx(state), response)
         assert result is not None and len(result["results"]) == 5 and "12" in result["note"]
+
+    def test_trim_respects_app_max_results(self, state):
+        state["app:max_search_results"] = 10
+        response = {"status": "success", "results": list(range(12))}
+        assert len(trim_tool_result(_tool("search_items"), {}, _ctx(state), response)["results"]) == 10

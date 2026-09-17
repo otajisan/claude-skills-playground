@@ -24,6 +24,7 @@ jobs:
         run: python -m pytest tests -q
 
       - name: Run evaluation
+        shell: bash   # 明示すると -eo pipefail 付きで実行され、tee で adk eval の失敗が隠れない
         env:
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
           GOOGLE_GENAI_USE_VERTEXAI: "FALSE"

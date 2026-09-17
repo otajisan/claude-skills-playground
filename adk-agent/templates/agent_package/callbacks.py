@@ -24,7 +24,9 @@ from google.adk.tools import BaseTool
 from google.genai import types
 
 from .config import config
-from .state_keys import StateKeys, get_user_role
+from .harden.audit_logger import identity
+from .harden.execution_limiter import limiter
+from .state_keys import StateKeys, get_max_results, get_user_role
 
 logger = logging.getLogger(__name__)
 
@@ -133,7 +135,8 @@ INJECTION_PATTERNS: list[re.Pattern[str]] = [
     re.compile(r"(指示|命令|ルール).{0,10}(無視|忘れ|リセット|上書き)"),
     re.compile(r"ignore\s+(all\s+)?(previous|above|prior)\s+(instructions|rules)", re.IGNORECASE),
     re.compile(r"(システムプロンプト|system\s*prompt).{0,10}(出力|表示|教え|見せ|reveal|show|print)", re.IGNORECASE),
-    re.compile(r"\bjailbreak\b|\bDAN\b|developer\s+mode", re.IGNORECASE),
+    re.compile(r"\bjailbreak\b|developer\s+mode", re.IGNORECASE),
+    re.compile(r"\bDAN\b"),  # 大文字のみ（人名 "Dan" を誤検出しない）
     re.compile(r"(管理者|admin)\s*モード.{0,6}(切り替え|移行|有効)"),
 ]
 
@@ -188,16 +191,31 @@ def mask_pii(text: str) -> tuple[str, bool]:
 
 
 def validate_response(callback_context: Context, llm_response: LlmResponse) -> Optional[LlmResponse]:
-    """LLM 応答の禁止ワードを検査し、PII をマスクする。"""
-    text = _response_text(llm_response)
-    if not text:
+    """LLM 応答のテキスト部分だけを検査・マスクする。
+
+    function_call など非テキストの parts は保持する（差し替えでツール呼び出しを潰さない）。
+    """
+    if not llm_response.content or not llm_response.content.parts:
         return None
-    if any(word in text for word in PROHIBITED_WORDS):
-        return _text_response("申し訳ございません。セキュリティ上の理由からお伝えできません。")
-    masked, changed = mask_pii(text)
-    if changed:
-        return _text_response(masked)
-    return None
+    new_parts = []
+    changed = False
+    for part in llm_response.content.parts:
+        text = getattr(part, "text", None)
+        if not text:
+            new_parts.append(part)
+            continue
+        if any(word in text for word in PROHIBITED_WORDS):
+            new_parts.append(types.Part(text="申し訳ございません。セキュリティ上の理由からお伝えできません。"))
+            changed = True
+            continue
+        masked, masked_changed = mask_pii(text)
+        new_parts.append(types.Part(text=masked) if masked_changed else part)
+        changed = changed or masked_changed
+    if not changed:
+        return None
+    return llm_response.model_copy(
+        update={"content": types.Content(role=llm_response.content.role or "model", parts=new_parts)}
+    )
 
 
 # --- L3: before_tool ------------------------------------------------------
@@ -225,17 +243,8 @@ def authorize_tool_access(tool: BaseTool, args: dict, tool_context: Context) -> 
 
 
 def limit_tool_calls(tool: BaseTool, args: dict, tool_context: Context) -> Optional[dict]:
-    """セッション全体・ツール単位の実行回数上限。"""
-    total = int(tool_context.state.get(StateKeys.TOTAL_TOOL_CALLS, 0))
-    if total >= config.max_tool_calls_per_session:
-        return {"status": "error", "error": f"セッションあたりのツール実行上限（{config.max_tool_calls_per_session} 回）に達しました。"}
-    per_tool_key = f"_tool_calls_{tool.name}"
-    per_tool = int(tool_context.state.get(per_tool_key, 0))
-    if per_tool >= config.max_tool_calls_per_tool:
-        return {"status": "error", "error": f"ツール '{tool.name}' の呼び出し回数が上限（{config.max_tool_calls_per_tool} 回）に達しました。"}
-    tool_context.state[StateKeys.TOTAL_TOOL_CALLS] = total + 1
-    tool_context.state[per_tool_key] = per_tool + 1
-    return None
+    """セッション全体・ツール単位の実行回数上限とループ検知（harden.execution_limiter に委譲。カウンタは 1 つ）。"""
+    return limiter.check_limit(tool, args, tool_context)
 
 
 def validate_tool_args(tool: BaseTool, args: dict, tool_context: Context) -> Optional[dict]:
@@ -243,8 +252,12 @@ def validate_tool_args(tool: BaseTool, args: dict, tool_context: Context) -> Opt
     path = args.get("path") or args.get("file_path")
     if isinstance(path, str) and (".." in path or path.startswith("/")):
         return {"status": "error", "error": "指定されたパスにはアクセスできません。"}
-    query = args.get("query") or args.get("sql")
-    if isinstance(query, str) and re.search(r"\b(DROP|DELETE|UPDATE|INSERT|ALTER|TRUNCATE)\b", query, re.IGNORECASE):
+    # SQL の検査は SQL を受けるツール（引数名 sql、またはツール名に sql/query を含む）に限定する。
+    # search_items(query=...) のような自由文キーワードには適用しない
+    sql = args.get("sql")
+    if sql is None and re.search(r"sql|query", tool.name, re.IGNORECASE):
+        sql = args.get("query")
+    if isinstance(sql, str) and re.search(r"\b(DROP|DELETE|UPDATE|INSERT|ALTER|TRUNCATE)\b", sql, re.IGNORECASE):
         return {"status": "error", "error": "安全でないクエリが検出されました。読み取り専用のクエリのみ実行できます。"}
     return None
 
@@ -252,6 +265,7 @@ def validate_tool_args(tool: BaseTool, args: dict, tool_context: Context) -> Opt
 def audit_tool_call(tool: BaseTool, args: dict, tool_context: Context) -> Optional[dict]:
     """ツール呼び出しを PII マスク済みの構造化ログとして記録する（記録のみ）。"""
     masked_args, _ = mask_pii(json.dumps(args, ensure_ascii=False, default=str))
+    session_id, user_id = identity(tool_context)
     logger.info(
         json.dumps(
             {
@@ -260,8 +274,8 @@ def audit_tool_call(tool: BaseTool, args: dict, tool_context: Context) -> Option
                 "agent_name": tool_context.agent_name,
                 "tool_name": tool.name,
                 "tool_input_masked": masked_args,
-                "session_id": tool_context.state.get(StateKeys.SESSION_ID),
-                "user_id": tool_context.state.get(StateKeys.USER_ID),
+                "session_id": session_id,
+                "user_id": user_id,
             },
             ensure_ascii=False,
         )
@@ -311,10 +325,11 @@ def sanitize_tool_result(tool: BaseTool, args: dict, tool_context: Context, tool
     return sanitized if changed else None
 
 
-def trim_tool_result(tool: BaseTool, args: dict, tool_context: Context, tool_response: dict, *, limit: int = 5) -> Optional[dict]:
-    """大きな検索結果を上位 N 件に絞りコンテキストを節約する。"""
+def trim_tool_result(tool: BaseTool, args: dict, tool_context: Context, tool_response: dict) -> Optional[dict]:
+    """大きな検索結果を上位 N 件に絞りコンテキストを節約する（N は app:max_search_results、既定 5）。"""
     if not isinstance(tool_response, dict):
         return None
+    limit = get_max_results(tool_context.state)
     results = tool_response.get("results")
     if isinstance(results, list) and len(results) > limit:
         trimmed = dict(tool_response)
@@ -337,6 +352,6 @@ default_before_tool = compose_before_tool_callbacks(
     audit_tool_call,
     authorize_tool_access,
     validate_tool_args,
-    limit_tool_calls,
+    limit_tool_calls,  # 拒否された呼び出しを数えないよう最後に置く
 )
 default_after_tool = compose_after_tool_callbacks(sanitize_tool_result, trim_tool_result)

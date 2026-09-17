@@ -40,15 +40,23 @@ def generate_trace_id(session_id: str, timestamp: str) -> str:
     return hashlib.sha256(f"{session_id}:{timestamp}".encode()).hexdigest()[:16]
 
 
+def identity(ctx: Context) -> tuple[str, str]:
+    """Context から session_id / user_id を取る。ADK は ctx.session.id / ctx.user_id を持つ。State の値で上書き可。"""
+    session = getattr(ctx, "session", None)
+    session_id = ctx.state.get("session_id") or getattr(session, "id", None) or "unknown"
+    user_id = ctx.state.get("user_id") or getattr(ctx, "user_id", None) or "unknown"
+    return str(session_id), str(user_id)
+
+
 def _emit(event: str, ctx: Context, **fields: Any) -> None:
     now = datetime.now(JST).isoformat()
-    session_id = str(ctx.state.get("session_id", "unknown"))
+    session_id, user_id = identity(ctx)
     entry = {
         "event": event,
         "timestamp": now,
         "trace_id": generate_trace_id(session_id, now),
         "session_id": session_id,
-        "user_id": ctx.state.get("user_id", "unknown"),
+        "user_id": user_id,
         "agent_name": ctx.agent_name,
         **fields,
     }
