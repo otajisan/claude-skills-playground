@@ -1,0 +1,39 @@
+# .github/workflows/agent-eval.yml — PR で adk eval を回し、閾値未達ならマージをブロックする（第 5 章 5.1.7）
+name: Agent Evaluation
+
+on:
+  pull_request:
+    paths:
+      - "my_agent/**"
+      - "eval/**"
+
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install
+        run: pip install -r my_agent/requirements.txt
+
+      - name: Unit tests (guardrails, no LLM)
+        run: python -m pytest tests -q
+
+      - name: Run evaluation
+        shell: bash   # 明示すると -eo pipefail 付きで実行され、tee で adk eval の失敗が隠れない
+        env:
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          GOOGLE_GENAI_USE_VERTEXAI: "FALSE"
+          AGENT_ENV: dev
+        run: |
+          mkdir -p eval_results
+          adk eval ./my_agent eval/eval_set.json \
+            --config_file_path eval/eval_config.json \
+            --print_detailed_results | tee eval_results/output.log
+
+      - name: Check thresholds
+        run: python eval/check_eval_thresholds.py eval_results/ --config eval/eval_config.json

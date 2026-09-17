@@ -17,6 +17,19 @@ jobs:
       - name: validate hooks.json
         run: jq empty hooks/hooks.json
 
+      - name: validate skill templates (adk-agent)
+        run: |
+          python3 -m py_compile $(find adk-agent/templates -name '*.py')
+          find adk-agent/templates -name '*.json' -print0 | xargs -0 -n1 jq empty
+          python3 -m pip install -q --user pyyaml
+          python3 -c "import yaml,glob; [yaml.safe_load(open(f)) for f in glob.glob('adk-agent/templates/ci/*.y*ml')]"
+          # 各スキルの frontmatter が name/description/allowed-tools を持つこと
+          for f in */SKILL.md; do
+            for key in name description allowed-tools; do
+              grep -q "^$key:" "$f" || { echo "missing $key in $f"; exit 1; }
+            done
+          done
+
       - name: install.sh smoke test (idempotency)
         run: |
           export HOME="$(mktemp -d)"
