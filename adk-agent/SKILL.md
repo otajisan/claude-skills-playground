@@ -87,7 +87,7 @@ SessionService / Compaction（interval / overlap）/ Memory Bank・RAG の採否
 
 1. design ドキュメント（無ければ design モードを先に実施）からエージェント一覧・State キー・ツール・HITL 条件を取り出す
 2. `templates/agent_package/` をコピーして要件に合わせて書き換える。**構造は `adk create` 準拠**（`__init__.py` が `agent` サブモジュール・`root_agent`・`app` を公開。`app` を公開しないと `adk run` / `adk web` で Compaction と GlobalInstructionPlugin が効かない）。規模が大きければ `agents/` `tools/` `schemas/` に分割し `agent.py` は組み立て専用にする
-3. 必ず同梱する: `config.py`（`AGENT_MODEL` 等を環境変数から）、`state_keys.py`、`callbacks.py`（合成済み）、`session_config.py`、`.env.example`、`requirements.txt`、`eval/eval_set.json`（最低 5 件）、`eval/eval_config.json`、`tests/`。`.gitignore` に `.env` を追加する
+3. 必ず同梱する: `config.py`（`AGENT_MODEL` 等を環境変数から）、`state_keys.py`、`callbacks.py`（合成済み。HITL 承認・監査・実行回数制限は既定配線）、`harden/`、`session_config.py`、`.env.example`、`requirements.txt`、`eval/eval_set.json`（最低 5 件）、`eval/eval_config.json`、`tests/`。`.gitignore` に `.env` を追加する。RAG / Memory Bank は `RAG_CORPUS_ID` / `ENABLE_MEMORY_BANK` で有効化される配線が `agent.py` にある
 4. 生成後に **セルフレビュー**（下記チェック表）を実施し、結果を報告に含める
 5. 動作確認手順を提示: `adk run <pkg> "<入力例>" --jsonl` → `pytest tests/` → `adk eval <pkg> eval/eval_set.json --config_file_path eval/eval_config.json`（API キー必要。実行はユーザーに委ねる）
 
@@ -118,7 +118,7 @@ SessionService / Compaction（interval / overlap）/ Memory Bank・RAG の採否
 
 1. 対象エージェントのツールを **リスク × 可逆性** で分類し、承認基準 6 つ（影響範囲 / 可逆性 / 金額 / 権限 / 法的リスク / 前例）で HITL 対象を決める
 2. 5 層を配置する: L1 `before_model_callback`（インジェクション検出・レート制限・Kill Switch・エスカレーション判定）→ L2 Instruction のセキュリティルール → L3 `before_tool_callback`（RBAC・引数検証・実行回数制限・HITL 承認）→ L4 `after_tool_callback`（間接インジェクション検出・PII マスク）→ L5 `after_model_callback`（機密情報マスク）。全層で監査ログ
-3. `templates/agent_package/harden/`（scaffold 済みなら `<pkg>/harden/`）の `kill_switch.py` / `escalation.py` / `approval.py` / `audit_logger.py` を `callbacks.py` の合成に組み込む（`execution_limiter` は既定で配線済み。カウンタは 1 つなので二重登録しない）
+3. `templates/agent_package/harden/`（scaffold 済みなら `<pkg>/harden/`）の `kill_switch.py` / `escalation.py` を `callbacks.py` の合成の **先頭** に追加する（`approval` / `audit_logger` / `execution_limiter` は scaffold 時点で既定配線済み。カウンタは 1 つなので二重登録しない）。`APPROVAL_RULES` に業務ツールの承認条件を登録する
 4. ガードレール自体の pytest（正常通過 / 検出の両方）を追加する。ガードレール内の例外は **安全側に倒す**（try/except でブロック応答）
 5. 新規エージェントは **自律レベル 0（FULL_HITL）** から始め、承認率 95% 超で段階的に上げる方針を報告に書く
 

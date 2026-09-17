@@ -36,13 +36,11 @@ class ApprovalRule:
     message: str
 
 
-# TODO: 業務に合わせて承認ルールを定義する
+# TODO: 業務に合わせて承認ルールを定義する（承認基準 6 つ: 影響範囲 / 可逆性 / 金額 / 権限 / 法的リスク / 前例）
 APPROVAL_RULES: dict[str, ApprovalRule] = {
+    # 不可逆な操作は常に承認
     "delete_record": ApprovalRule(condition=lambda args: True, message="削除は取り消せないため承認が必要です"),
-    "transfer_funds": ApprovalRule(
-        condition=lambda args: int(args.get("amount", 0)) >= config.approval_amount_threshold * 2,
-        message="高額送金のため承認が必要です",
-    ),
+    # 金額閾値の例（APPROVAL_AMOUNT_THRESHOLD、既定 500,000 円）。ツールを追加したらここに登録する
     "submit_expense": ApprovalRule(
         condition=lambda args: int(args.get("amount", 0)) >= config.approval_amount_threshold,
         message="高額経費のため承認が必要です",

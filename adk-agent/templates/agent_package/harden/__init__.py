@@ -6,8 +6,9 @@
 - approval.py          : HITL 承認フロー（before_tool_callback + before_model_callback）
 - audit_logger.py      : PII マスク済み構造化監査ログ
 
-callbacks.py の合成に組み込む順序（先頭ほど優先）:
-  before_model: kill_switch → escalation → approval.handle_approval_input → 既定（rate_limit → injection → inject）
-  before_tool : kill_switch → audit → RBAC → approval.check → 引数検証 → execution_limiter（既定で配線済み）
-ExecutionLimiter は callbacks.default_before_tool にも使われる唯一のカウンタ。二重に登録しない。
+callbacks.py の既定合成に組み込まれているもの: approval / audit_logger / execution_limiter
+harden モードで先頭に追加するもの: kill_switch / escalation
+  before_model: kill_switch → escalation → [既定: approval.handle_approval_input → rate_limit → injection → inject]
+  before_tool : kill_switch → escalation.restricted_tool → [既定: audit → RBAC → approval.check → 引数検証 → limiter]
+ExecutionLimiter は唯一のカウンタ。二重に登録しない。
 """

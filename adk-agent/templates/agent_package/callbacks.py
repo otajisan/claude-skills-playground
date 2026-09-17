@@ -15,7 +15,6 @@ import json
 import logging
 import re
 from collections.abc import Callable
-from datetime import datetime, timezone
 from typing import Any, Optional
 
 from google.adk import Context
@@ -24,7 +23,8 @@ from google.adk.tools import BaseTool
 from google.genai import types
 
 from .config import config
-from .harden.audit_logger import identity
+from .harden.approval import check_approval, handle_approval_input
+from .harden.audit_logger import audit_after_tool, audit_before_tool
 from .harden.execution_limiter import limiter
 from .state_keys import StateKeys, get_max_results, get_user_role
 
@@ -262,27 +262,6 @@ def validate_tool_args(tool: BaseTool, args: dict, tool_context: Context) -> Opt
     return None
 
 
-def audit_tool_call(tool: BaseTool, args: dict, tool_context: Context) -> Optional[dict]:
-    """ツール呼び出しを PII マスク済みの構造化ログとして記録する（記録のみ）。"""
-    masked_args, _ = mask_pii(json.dumps(args, ensure_ascii=False, default=str))
-    session_id, user_id = identity(tool_context)
-    logger.info(
-        json.dumps(
-            {
-                "event": "tool_call",
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-                "agent_name": tool_context.agent_name,
-                "tool_name": tool.name,
-                "tool_input_masked": masked_args,
-                "session_id": session_id,
-                "user_id": user_id,
-            },
-            ensure_ascii=False,
-        )
-    )
-    return None
-
-
 # --- L4: after_tool -------------------------------------------------------
 TOOL_RESULT_PATTERNS: list[re.Pattern[str]] = [
     re.compile(r"\[SYSTEM\]", re.IGNORECASE),
@@ -340,18 +319,20 @@ def trim_tool_result(tool: BaseTool, args: dict, tool_context: Context, tool_res
 
 
 # --- 既定の合成 -----------------------------------------------------------
-# harden モードで templates/harden/*（Kill Switch / Escalation / ExecutionLimiter / 監査）を
-# 先頭に追加する。
+# 監査ログ・HITL 承認・実行回数制限は harden/ の実装を既定で配線する（原則 5: 新規は FULL_HITL から）。
+# harden モードでは Kill Switch / Escalation を先頭に追加する（harden/__init__.py の順序を参照）。
 default_before_model = compose_before_model_callbacks(
+    handle_approval_input,  # 「承認: <id>」/「拒否: <id>」の入力を先に処理する
     rate_limit_llm_calls,
     detect_prompt_injection,
     inject_runtime_context,
 )
 default_after_model = compose_after_model_callbacks(validate_response)
 default_before_tool = compose_before_tool_callbacks(
-    audit_tool_call,
-    authorize_tool_access,
+    audit_before_tool,
+    authorize_tool_access,  # RBAC で拒否されるものは承認フローに進めない
+    check_approval,         # APPROVAL_RULES に一致すれば承認待ちにする
     validate_tool_args,
-    limit_tool_calls,  # 拒否された呼び出しを数えないよう最後に置く
+    limit_tool_calls,       # 拒否された呼び出しを数えないよう最後に置く
 )
-default_after_tool = compose_after_tool_callbacks(sanitize_tool_result, trim_tool_result)
+default_after_tool = compose_after_tool_callbacks(audit_after_tool, sanitize_tool_result, trim_tool_result)
