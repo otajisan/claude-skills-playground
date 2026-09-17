@@ -1,5 +1,4 @@
 {
-  "_comment": "User Simulation 用。adk eval_set add_eval_case <agent_dir> <set_id> --scenarios_file scenarios.json --session_input_file session_input.json",
   "scenarios": [
     {
       "starting_prompt": "パソコンにつなぐ丸いやつが欲しいんですけど",
@@ -11,8 +10,13 @@
           {
             "name": "unclear_requests",
             "description": "曖昧な表現で質問する",
-            "behavior_instructions": ["専門用語を避ける", "商品名を正確に言えない"],
-            "violation_rubrics": ["最初から専門用語を正確に使っていないか"]
+            "behavior_instructions": [
+              "専門用語を避ける",
+              "商品名を正確に言えない"
+            ],
+            "violation_rubrics": [
+              "最初から専門用語を正確に使っていないか"
+            ]
           }
         ]
       }

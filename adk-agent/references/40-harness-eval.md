@@ -92,7 +92,7 @@ adk eval <agent_dir> eval/eval_set.json [eval/other.json ...] \
 
 ## User Simulation（ペルソナ評価）
 
-固定ケースでは初心者（あいまい・前提省略）/ 上級者（専門用語・効率）/ 敵対的（インジェクション）を網羅できない。`ConversationScenario`（`starting_prompt` / `conversation_plan` / `user_persona`）を `scenarios.json` に定義し、LLM がユーザー役を演じる。
+固定ケースでは初心者（あいまい・前提省略）/ 上級者（専門用語・効率）/ 敵対的（インジェクション）を網羅できない。`ConversationScenario`（`starting_prompt` / `conversation_plan` / `user_persona`）を `scenarios.json` に定義し、LLM がユーザー役を演じる。**`ConversationScenarios` は未知キーを拒否する**（`_comment` 等を入れると `Extra inputs are not permitted`）。
 
 ```bash
 adk eval_set create ./my_agent persona_set
