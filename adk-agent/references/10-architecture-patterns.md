@@ -74,7 +74,7 @@ v2.2.0 で可能になったこと: 実行グラフをコードで固定（決�
 
 ```
 my_agent/
-├── __init__.py      # from . import agent as agent; from .agent import root_agent
+├── __init__.py      # from . import agent as agent; from .agent import app, root_agent  ← app も公開
 ├── agent.py         # 組み立てのみ
 ├── agents/          # サブエージェント
 ├── tools/           # ツール

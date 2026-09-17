@@ -1,7 +1,7 @@
 ---
 name: adk-agent
 description: Google ADK（Agent Development Kit）でエージェント／マルチエージェントを設計・実装・評価・堅牢化・レビュー・デプロイする。『現場で役立つマルチエージェントAI設計入門（A2A × ADK）』の 3 軸体系（Context / Memory / Harness）・設計原則 10・アンチパターン 12・レビューチェックリスト 29 項目を Agentic Coding で実践する。「ADK」「Google ADK」「エージェントを設計して」「マルチエージェント設計」「A2A」「McpToolset」「adk eval」「評価セット」「ガードレール」「HITL」「Kill Switch」「Agent Engine にデプロイ」「エージェントの設計レビュー」などと言われたら必ずこのSkillを使う。引数は `<mode> [対象パス | 要件]`（mode: design / scaffold / eval / harden / review / deploy）。
-allowed-tools: Bash(adk:*), Bash(python:*), Bash(python3:*), Bash(pytest:*), Bash(pip:*), Bash(uv:*), Bash(gcloud:*), Bash(git:*), Bash(find:*), Bash(grep:*), Bash(ls:*), Bash(cat:*), Bash(mkdir:*), Bash(cp:*), Read, Write, Edit, Grep, Glob
+allowed-tools: Bash(adk --version:*), Bash(adk run:*), Bash(adk web:*), Bash(adk eval:*), Bash(adk eval_set:*), Bash(adk test:*), Bash(adk conformance:*), Bash(python:*), Bash(python3:*), Bash(pytest:*), Bash(git status:*), Bash(git diff:*), Bash(git log:*), Bash(find:*), Bash(grep:*), Bash(ls:*), Bash(cat:*), Bash(mkdir:*), Bash(cp:*), Read, Write, Edit, Grep, Glob
 ---
 
 # ADK Agent Skill
@@ -36,12 +36,12 @@ Claude Code は書籍の「AI コーディングエージェント」役であ�
 ADK バージョン : !`adk --version 2>/dev/null || echo "adk コマンドなし"`
 Python         : !`python3 --version`
 ADK プロジェクト: !`find . -maxdepth 3 -name agent.py -not -path '*/.venv/*' -not -path '*/node_modules/*' 2>/dev/null`
-モデル経路     : !`env | grep -E '^(GOOGLE_API_KEY|GOOGLE_GENAI_USE_VERTEXAI|GOOGLE_CLOUD_PROJECT|GOOGLE_CLOUD_LOCATION|AGENT_MODEL|ANTHROPIC_API_KEY)=' | sed -E 's/=(.{4}).*/=\1…/'`
+モデル経路     : !`env | grep -E '^(GOOGLE_API_KEY|GOOGLE_GENAI_USE_VERTEXAI|GOOGLE_CLOUD_PROJECT|GOOGLE_CLOUD_LOCATION|AGENT_MODEL|ANTHROPIC_API_KEY)=' | sed -E 's/^(GOOGLE_API_KEY|ANTHROPIC_API_KEY)=.*/\1=(set)/'`
 ```
 
 - ADK が **2.2.x 以外**（または未インストール）なら「テンプレートと references は ADK v2.2.0 で検証。Workflow Runtime / `Context` エイリアス / `EventsCompactionConfig` などは 2.x 前提。差分は `adk --help` と公式リリースノートで確認する」と警告してから進む
 - `GOOGLE_GENAI_USE_VERTEXAI=TRUE` とプレースホルダの `GOOGLE_CLOUD_PROJECT` が同居していると API キー経路でも Vertex AI に接続して `PERMISSION_DENIED` になる（`references/adk-cli.md`）。動作確認前に必ず指摘する
-- 課金が発生する操作（Vertex AI / Agent Engine / Memory Bank / RAG Engine / Claude API）は **提示のみで実行しない**。ユーザーが明示的に承認した場合だけ実行する
+- 課金が発生する操作（Vertex AI / Agent Engine / Memory Bank / RAG Engine / Claude API）は **提示のみで実行しない**。ユーザーが明示的に承認した場合だけ実行する。`adk deploy` / `gcloud` / `pip install` は `allowed-tools` に含めていないため、実行時は必ず確認プロンプトが出る
 
 ---
 
@@ -86,7 +86,7 @@ SessionService / Compaction（interval / overlap）/ Memory Bank・RAG の採否
 **読む**: `references/10-architecture-patterns.md`, `20-context-engineering.md`, `30-memory-engineering.md`, `50-tools-mcp-cli.md`, `adk-cli.md`, `models.md`。A2A 構成なら `60-a2a.md`。
 
 1. design ドキュメント（無ければ design モードを先に実施）からエージェント一覧・State キー・ツール・HITL 条件を取り出す
-2. `templates/agent_package/` をコピーして要件に合わせて書き換える。**構造は `adk create` 準拠**（`__init__.py` が `agent` サブモジュールと `root_agent` を公開）。規模が大きければ `agents/` `tools/` `schemas/` に分割し `agent.py` は組み立て専用にする
+2. `templates/agent_package/` をコピーして要件に合わせて書き換える。**構造は `adk create` 準拠**（`__init__.py` が `agent` サブモジュール・`root_agent`・`app` を公開。`app` を公開しないと `adk run` / `adk web` で Compaction と GlobalInstructionPlugin が効かない）。規模が大きければ `agents/` `tools/` `schemas/` に分割し `agent.py` は組み立て専用にする
 3. 必ず同梱する: `config.py`（`AGENT_MODEL` 等を環境変数から）、`state_keys.py`、`callbacks.py`（合成済み）、`session_config.py`、`.env.example`、`requirements.txt`、`eval/eval_set.json`（最低 5 件）、`eval/eval_config.json`、`tests/`。`.gitignore` に `.env` を追加する
 4. 生成後に **セルフレビュー**（下記チェック表）を実施し、結果を報告に含める
 5. 動作確認手順を提示: `adk run <pkg> "<入力例>" --jsonl` → `pytest tests/` → `adk eval <pkg> eval/eval_set.json --config_file_path eval/eval_config.json`（API キー必要。実行はユーザーに委ねる）

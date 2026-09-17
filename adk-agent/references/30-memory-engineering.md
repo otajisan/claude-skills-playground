@@ -48,7 +48,7 @@ Memory への取り込みと検索は自動ではない: `after_agent_callback` 
 
 ## Compaction（会話履歴の圧縮）
 
-`App(events_compaction_config=EventsCompactionConfig(...))` で設定し、**`Runner(app=app, ...)` で渡す**（`agent=` 直接渡しだと無視される）。v2.2.0 時点で experimental warning あり。post-invocation 方式（応答後にバックグラウンドで要約）。pending function call 中は自動抑制。
+`App(events_compaction_config=EventsCompactionConfig(...))` で設定し、**`Runner(app=app, ...)` で渡す**（`agent=` 直接渡しだと無視される）。`adk run` / `adk web` ではパッケージ `__init__.py` から `app` を公開する（ローダーは `app` → `root_agent` の順に探し、`root_agent` だけだと App 設定は捨てられる。v2.2.0 の `AgentLoader` で確認）。v2.2.0 時点で experimental warning あり。post-invocation 方式（応答後にバックグラウンドで要約）。pending function call 中は自動抑制。
 
 | パラメータ | 意味 |
 |---|---|

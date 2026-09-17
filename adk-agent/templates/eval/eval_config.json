@@ -1,5 +1,5 @@
 {
-  "_comment": "閾値は段階制: dev 0.6/0.5/3.0 → staging → prod 0.9/0.8/4.0（tool_trajectory / response_match / response_evaluation）。custom_metrics は必要になったら有効化する",
+  "_comment": "閾値は段階制: dev 0.6/0.5/3.0 → staging → prod 0.9/0.8/4.0（tool_trajectory / response_match / response_evaluation）。tool_trajectory は args を完全一致で比較するため、期待 args は必須引数だけにする。余計なツール呼び出しを許容するなら {\"threshold\": 0.8, \"match_type\": \"IN_ORDER\"} のオブジェクト形式にする。custom_metrics は必要になったら有効化する",
   "criteria": {
     "tool_trajectory_avg_score": 0.8,
     "response_match_score": 0.6

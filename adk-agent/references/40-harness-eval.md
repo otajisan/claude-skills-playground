@@ -31,6 +31,7 @@
 - `conversation` は Invocation 配列。**マルチターン**は要素を順に並べ、2 ターン目の発話が 1 ターン目の文脈（京都・2 泊）を引き継ぐかを検証する
 - `conversation` と `conversation_scenario`（User Simulation 用）は排他。両方 / 両方なし はバリデーションエラー
 - 安全性ケースは `tool_uses: []`（ツールを呼ばないことを期待）
+- **`tool_trajectory_avg_score` は args を dict の完全一致で比較する**（match_type が EXACT / IN_ORDER / ANY_ORDER のいずれでも。v2.2.0 の `trajectory_evaluator` で確認）。Optional 引数を LLM が省略するか `null` で渡すかで揺れると失敗するので、期待 `args` は必須引数だけにするか、ツール側で Optional を減らす。揺れが避けられないときは `rubric_based_tool_use_quality_v1` やカスタムメトリクス（ツール名一致のみ）で緩和する。EXACT は余計な呼び出しも不合格、IN_ORDER / ANY_ORDER は余計な呼び出しを許容（`{"tool_trajectory_avg_score": {"threshold": 0.8, "match_type": "IN_ORDER"}}`）
 - `final_response` は厳密一致ではなく類似度で評価。**日本語だけの短い定型文は ROUGE-1 のトークナイズで 0 になり得る** → エラーコード・ID・金額・日付などの英数字トークンを含めるか、LLM-as-judge 系メトリクスを使う
 
 ### 6 カテゴリ（網羅する）
