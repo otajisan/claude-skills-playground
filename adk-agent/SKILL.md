@@ -86,7 +86,7 @@ SessionService / Compaction（interval / overlap）/ Memory Bank・RAG の採否
 **読む**: `references/10-architecture-patterns.md`, `20-context-engineering.md`, `30-memory-engineering.md`, `50-tools-mcp-cli.md`, `adk-cli.md`, `models.md`。A2A 構成なら `60-a2a.md`。
 
 1. design ドキュメント（無ければ design モードを先に実施）からエージェント一覧・State キー・ツール・HITL 条件を取り出す
-2. `templates/agent_package/` をコピーして要件に合わせて書き換える。**構造は `adk create` 準拠**（`__init__.py` が `agent` サブモジュール・`root_agent`・`app` を公開。`app` を公開しないと `adk run` / `adk web` で Compaction と GlobalInstructionPlugin が効かない）。規模が大きければ `agents/` `tools/` `schemas/` に分割し `agent.py` は組み立て専用にする
+2. `templates/agent_package/` をコピーして要件に合わせて書き換える。**ディレクトリ名は `agent.py` の `APP_NAME` と同じにする**（例: `my_agent/`）。`templates/tests/` は import 名 `my_agent` に依存するため、別名にするなら `grep -rl my_agent tests/ | xargs sed -i '' 's/my_agent/<pkg>/g'` で一括置換する。**構造は `adk create` 準拠**（`__init__.py` が `agent` サブモジュール・`root_agent`・`app` を公開。`app` を公開しないと `adk run` / `adk web` で Compaction と GlobalInstructionPlugin が効かない）。規模が大きければ `agents/` `tools/` `schemas/` に分割し `agent.py` は組み立て専用にする
 3. 必ず同梱する: `config.py`（`AGENT_MODEL` 等を環境変数から）、`state_keys.py`、`callbacks.py`（合成済み。HITL 承認・監査・実行回数制限は既定配線）、`harden/`、`session_config.py`、`.env.example`、`requirements.txt`、`eval/eval_set.json`（最低 5 件）、`eval/eval_config.json`、`tests/`。`.gitignore` に `.env` を追加する。RAG / Memory Bank は `RAG_CORPUS_ID` / `ENABLE_MEMORY_BANK` で有効化される配線が `agent.py` にある
 4. 生成後に **セルフレビュー**（下記チェック表）を実施し、結果を報告に含める
 5. 動作確認手順を提示: `adk run <pkg> "<入力例>" --jsonl` → `pytest tests/` → `adk eval <pkg> eval/eval_set.json --config_file_path eval/eval_config.json`（API キー必要。実行はユーザーに委ねる）

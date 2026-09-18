@@ -1,6 +1,7 @@
 """SessionService / MemoryService 生成と State アクセサのテスト。"""
 
 import importlib
+import logging
 
 import pytest
 from google.adk.sessions import InMemorySessionService
@@ -59,6 +60,29 @@ class TestConfig:
         _reload_with_env(monkeypatch, AGENT_MODEL=None)
         assert config_module.config.model == "gemini-3.5-flash"
         assert config_module.build_model() == "gemini-3.5-flash"
+
+    def test_default_limits_are_layered(self, monkeypatch):
+        """既定値は 内側 → 外側 の順に発火する: 連続空振り < ツール単位 < セッション合計 < LLM 呼び出し。
+
+        直列のツール呼び出しでは 1 往復 = LLM 1 回なので、LLM 上限がツール上限以下だと
+        ツール層の具体的なエラー文言が届く前に LLM 側の定型文で打ち切られる。
+        """
+        _reload_with_env(
+            monkeypatch, MAX_LLM_CALLS=None, MAX_TOOL_CALLS=None, MAX_TOOL_CALLS_PER_TOOL=None, MAX_UNPRODUCTIVE_STREAK=None
+        )
+        c = config_module.config
+        assert c.max_unproductive_streak < c.max_tool_calls_per_tool
+        assert c.max_tool_calls_per_tool < c.max_tool_calls_per_session
+        assert c.max_tool_calls_per_session < c.max_llm_calls_per_session
+
+    def test_warns_when_llm_cap_not_above_tool_cap(self, monkeypatch, caplog):
+        with caplog.at_level(logging.WARNING):
+            _reload_with_env(monkeypatch, MAX_LLM_CALLS="10", MAX_TOOL_CALLS="50")
+        assert any("MAX_LLM_CALLS" in record.getMessage() for record in caplog.records)
+        caplog.clear()
+        with caplog.at_level(logging.WARNING):
+            _reload_with_env(monkeypatch, MAX_LLM_CALLS="60", MAX_TOOL_CALLS="50")
+        assert not any("MAX_LLM_CALLS" in record.getMessage() for record in caplog.records)
 
     def test_invalid_int_env_raises(self, monkeypatch):
         monkeypatch.setenv("COMPACTION_INTERVAL", "twenty")

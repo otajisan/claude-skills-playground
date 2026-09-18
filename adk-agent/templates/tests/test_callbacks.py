@@ -175,6 +175,20 @@ class TestLimitToolCalls:
 
 
 # --- after_tool -----------------------------------------------------------
+class TestRecordResultWiring:
+    def test_default_after_tool_records_unproductive_streak(self, state):
+        """既定合成に record_result が含まれ、空振り結果が temp: の連続カウンタに積まれる。"""
+        empty = {"status": "success", "results": [], "total": 0}
+        default_after_tool(_tool("search_items"), {"query": "x"}, _ctx(state), empty)
+        default_after_tool(_tool("search_items"), {"query": "y"}, _ctx(state), empty)
+        assert state["temp:unproductive_search_items"] == 2
+
+    def test_record_result_does_not_alter_response(self, state):
+        """記録のみ。空振り結果そのものは差し替えない（None で続行）。"""
+        empty = {"status": "success", "results": [], "total": 0}
+        assert default_after_tool(_tool("search_items"), {"query": "x"}, _ctx(state), empty) is None
+
+
 class TestAfterTool:
     def test_indirect_injection_filtered(self, state):
         result = sanitize_tool_result(

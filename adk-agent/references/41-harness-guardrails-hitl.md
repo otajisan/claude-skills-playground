@@ -88,7 +88,13 @@ PII マスク: メール `[EMAIL]`、電話 `[PHONE]`、マイナンバー、カ
 
 ### 実行回数制限
 
-`ExecutionLimiter(max_calls_per_session=50, max_calls_per_tool=10)` を `before_tool_callback` に。State の `_total_tool_calls` / `_tool_calls_<name>` でカウント。`LoopAgent.max_iterations` / `RunConfig.max_llm_calls` / Instruction の終了条件と多重防御（Infinite Loop 対策）。ループ検知: 直近 3 回が同一ツール・同一引数なら停止。
+`ExecutionLimiter(max_calls_per_session=50, max_calls_per_tool=10, max_unproductive_streak=3)` の `check_limit` を `before_tool_callback` に、`record_result` を `after_tool_callback` に。State の `_total_tool_calls` / `_tool_calls_<name>`（セッション）と `temp:_call_history` / `temp:unproductive_<name>`（1 Invocation）でカウント。`LoopAgent.max_iterations` / `RunConfig.max_llm_calls` / Instruction の終了条件と多重防御（Infinite Loop 対策）。
+
+ループ検知は 2 種類:
+- 同一引数: 直近 3 回が同一ツール・同一引数なら停止（1 Invocation 内。同じ質問を数ターン聞き直すのはループではない）
+- 連続空振り: 同一ツールの結果（`status != success` / `total == 0` / `results == []`、MCP は `isError`）が 3 回連続なら停止。`status` も `isError` も無い結果（RAG / AgentTool の文字列など）は判定せず数えない（正常なツールを誤検知で止めない）。**引数を変えながら再検索を続けるループ**（「パソコン → ノート → PC → laptop …」）は同一引数検知をすり抜けるため、こちらで止める。1 Invocation 内の暴走なので `temp:` スコープに置き、次のユーザー入力には持ち越さない
+
+発火順は 内側 → 外側 に揃える: 連続空振り（3）< ツール単位（10）< セッション合計（50）< LLM 呼び出し（`MAX_LLM_CALLS`、既定 60）。直列のツール呼び出しでは 1 往復 = LLM 1 回なので、LLM 上限がツール上限以下だと、ツール層の具体的なエラー文言（モデルに次の行動を示す）が届く前に LLM 側の定型文で打ち切られる。ツール側でも 0 件時は `message` で「再検索は 1 回まで」を返し、L2（Instruction）と L3（コールバック）の指示を一致させる。
 
 ## フェイルセーフ 3 レイヤー（原則 9）
 

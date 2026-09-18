@@ -8,7 +8,7 @@
 | 1 | **God Agent**（万能エージェント） | Instruction 数千トークン、ツール 10 個超、応答不安定、修正が他機能に波及 | 「エージェントを増やすと複雑」という誤解で機能を足し続ける | 責務ごとに分割しルーター / Workflow で連携 | ツール 5 個超で分割検討、10 個超で分割推奨 | 1 |
 | 2 | **Prompt Spaghetti** | 「ただし」の連鎖、矛盾・重複した指示、変更で予期しない挙動変化 | 問題が起きるたびにルール追加 | 方針 / フロー / 詳細ルールを分離、詳細は Agent Skills へ | 200 トークン超で構造化、500 超で外部化 | 6 |
 | 3 | **Memory Amnesia** | 同じ情報を何度も聞く、前回の合意が引き継がれない | InMemorySessionService のまま本番、State 設計欠落、Memory Bank 未設定 | Database / VertexAi SessionService + State 設計 + Memory Bank | 本番は必ず永続 SessionService | — |
-| 4 | **Infinite Loop** | 同じツールを同じ引数で繰り返す、タイムアウト、コスト急増 | 終了条件なし、`max_iterations` / `max_llm_calls` 未設定 | 上限設定 + Instruction の終了条件 + コールバックでループ検知（直近 3 回同一なら停止）| LoopAgent には必ず `max_iterations` | 9 |
+| 4 | **Infinite Loop** | 同じツールを同じ引数で繰り返す、**引数を変えながら空振りを繰り返す**、タイムアウト、コスト急増 | 終了条件なし、`max_iterations` / `max_llm_calls` 未設定、0 件結果がモデルに「失敗」と伝わらない | 上限設定 + Instruction の終了条件 + コールバックでループ検知（直近 3 回同一 / 3 回連続空振りなら停止）+ 0 件時にツールが次の行動を `message` で返す。上限は 内側 → 外側 の順に発火させる（LLM 上限はツール上限より大きく）| LoopAgent には必ず `max_iterations` | 9 |
 | 5 | **Token Burn** | 月間コストが予算超過、単純タスクに長い Instruction・過剰ツール、同じ質問で毎回 LLM | キャッシュ戦略・コスト監視がない | 責務分離（短い Instruction のルーター）、キャッシュ、Compaction、単価見直し | 週次監視、前週比 20% 増で調査 | 10 |
 | 6 | **Security Afterthought** | API キー直書き、入力をそのまま LLM / SQL / コマンドへ、権限制御なし、ログに機密 | 「まず動かしてから」 | 設計開始時にセキュリティ観点を定め、レビュー項目に含める。引数サニタイズ + 環境変数 + before_tool_callback | S-1〜S-8 は本番前に全項目適合 | 2 |
 | 7 | **Chatty Agents** | メッセージ数が数倍、A2A トレースが長大、同じ情報を繰り返し送受信 | インターフェースが曖昧で情報が分散 | 必要情報を揃えてから `output_key` / DTO で 1 回で引き渡す。疎結合 ≠ 通信回数増 | 1 タスク 3 往復超で再設計 | 8 |

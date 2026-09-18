@@ -37,7 +37,8 @@ def search_items(query: str, category: Optional[str] = None, tool_context: ToolC
         category: 絞り込むカテゴリ（例: "周辺機器"）。省略時は全カテゴリ
 
     Returns:
-        status と results（商品リスト）を含む辞書。該当なしでも status は success
+        status と results（商品リスト）を含む辞書。該当なしでも status は success で、
+        再検索を無限に繰り返さないよう message に次の行動を示す
     """
     limit = get_max_results(tool_context.state) if tool_context is not None else 5
     if tool_context is not None:
@@ -49,7 +50,15 @@ def search_items(query: str, category: Optional[str] = None, tool_context: ToolC
         for item in _ITEMS.values()
         if query in item["name"] and (category is None or item["category"] == category)
     ]
-    return {"status": "success", "query": query, "results": results[:limit], "total": len(results)}
+    response = {"status": "success", "query": query, "results": results[:limit], "total": len(results)}
+    if not results:
+        # 空の results だけではモデルが「失敗」と認識せず、語を変えて再検索を続ける（実測 9 回）。
+        # 次の行動を明示して L2（Instruction）の再検索上限と揃える
+        response["message"] = (
+            f"'{query}' に該当する商品はありません。別の表現での再検索は 1 回までにし、"
+            "それでも見つからなければ該当なしとユーザーに伝えてください。"
+        )
+    return response
 
 
 def get_record(record_id: str) -> dict:

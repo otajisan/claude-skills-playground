@@ -8,8 +8,11 @@ ADK v2.2.0 で検証。差分は `adk --version` と公式リリースノート�
 
 from __future__ import annotations
 
+import logging
 import os
 from dataclasses import dataclass, field
+
+logger = logging.getLogger(__name__)
 
 
 def _env_int(name: str, default: int) -> int:
@@ -51,10 +54,13 @@ class AgentConfig:
     compaction_interval: int = field(default_factory=lambda: _env_int("COMPACTION_INTERVAL", 20))
     compaction_overlap: int = field(default_factory=lambda: _env_int("COMPACTION_OVERLAP", 2))
 
-    # --- ガードレール閾値 ---
-    max_llm_calls_per_session: int = field(default_factory=lambda: _env_int("MAX_LLM_CALLS", 10))
+    # --- ガードレール閾値（内側 → 外側の順に発火させる: 連続空振り < ツール単位 < セッション合計 < LLM 呼び出し）---
+    # 直列のツール呼び出しでは 1 往復 = LLM 1 回。MAX_LLM_CALLS はツール上限より大きくしないと、
+    # ツール層の具体的なエラー文言が届く前に LLM 側の定型文で打ち切られる（__post_init__ で警告）。
+    max_llm_calls_per_session: int = field(default_factory=lambda: _env_int("MAX_LLM_CALLS", 60))
     max_tool_calls_per_session: int = field(default_factory=lambda: _env_int("MAX_TOOL_CALLS", 50))
     max_tool_calls_per_tool: int = field(default_factory=lambda: _env_int("MAX_TOOL_CALLS_PER_TOOL", 10))
+    max_unproductive_streak: int = field(default_factory=lambda: _env_int("MAX_UNPRODUCTIVE_STREAK", 3))
     cost_limit_usd: float = field(default_factory=lambda: _env_float("COST_LIMIT_USD", 1.0))
 
     # --- HITL ---
@@ -65,6 +71,16 @@ class AgentConfig:
     enable_memory_bank: bool = field(
         default_factory=lambda: os.environ.get("ENABLE_MEMORY_BANK", "false").lower() == "true"
     )
+
+    def __post_init__(self) -> None:
+        # ツールを持たないエージェントでは LLM 上限を低く保つのが正しいので、例外ではなく警告に留める
+        if self.max_llm_calls_per_session <= self.max_tool_calls_per_session:
+            logger.warning(
+                "MAX_LLM_CALLS (%d) が MAX_TOOL_CALLS (%d) 以下です。直列のツール呼び出しでは 1 往復 = LLM 1 回なので、"
+                "ツール層の上限（ループ検知・ツール単位・セッション合計）が発火する前に LLM 上限の定型文で打ち切られます。",
+                self.max_llm_calls_per_session,
+                self.max_tool_calls_per_session,
+            )
 
 
 config = AgentConfig()

@@ -5,13 +5,14 @@ harden/ は agent_package（scaffold 後は my_agent/）配下に同居する。
 
 from unittest.mock import MagicMock
 
+import pytest
 from google.adk.models import LlmRequest
 from google.genai import types
 
 from my_agent.harden.approval import PENDING_KEY, check_approval, handle_approval_input
 from my_agent.harden.audit_logger import audit_before_tool, mask_pii
 from my_agent.harden.escalation import EscalationLevel, EscalationManager, escalation_callback, escalation_mgr, restricted_tool_callback
-from my_agent.harden.execution_limiter import ExecutionLimiter
+from my_agent.harden.execution_limiter import ExecutionLimiter, is_unproductive
 from my_agent.harden.kill_switch import before_model_kill_switch, before_tool_kill_switch, kill_switch
 
 
@@ -93,6 +94,80 @@ class TestExecutionLimiter:
         assert limiter.check_limit(_tool("a"), {"q": "same"}, _ctx(state)) is None
         assert limiter.check_limit(_tool("a"), {"q": "same"}, _ctx(state)) is None
         assert "繰り返され" in limiter.check_limit(_tool("a"), {"q": "same"}, _ctx(state))["error"]
+
+    def test_unproductive_streak_blocks_varying_args(self):
+        """引数を変えながら空振りを続けるループ（同一引数検知をすり抜ける実例）を止める。"""
+        limiter = ExecutionLimiter(max_calls_per_session=50, max_calls_per_tool=50, max_unproductive_streak=3)
+        state: dict = {}
+        ctx = _ctx(state)
+        empty = {"status": "success", "results": [], "total": 0}
+        for query in ("パソコン", "ノート", "PC"):
+            assert limiter.check_limit(_tool("search"), {"q": query}, ctx) is None
+            assert limiter.record_result(_tool("search"), {"q": query}, ctx, empty) is None
+        blocked = limiter.check_limit(_tool("search"), {"q": "laptop"}, ctx)
+        assert "連続" in blocked["error"]
+        assert "該当なし" in blocked["error"]  # モデルに次の行動（結果を踏まえて回答 / 該当なしを伝える）を示す
+        # 別ツールは巻き込まれない
+        assert limiter.check_limit(_tool("other"), {}, ctx) is None
+
+    def test_unproductive_streak_resets_on_productive_result(self):
+        limiter = ExecutionLimiter(max_calls_per_session=50, max_calls_per_tool=50, max_unproductive_streak=2)
+        state: dict = {}
+        ctx = _ctx(state)
+        empty = {"status": "success", "results": [], "total": 0}
+        hit = {"status": "success", "results": [{"id": "ITEM-001"}], "total": 1}
+        limiter.record_result(_tool("search"), {"q": "a"}, ctx, empty)
+        limiter.record_result(_tool("search"), {"q": "b"}, ctx, hit)
+        limiter.record_result(_tool("search"), {"q": "c"}, ctx, empty)
+        assert limiter.check_limit(_tool("search"), {"q": "d"}, ctx) is None  # 1 回分しか溜まっていない
+
+    def test_unproductive_streak_is_temp_scoped(self):
+        """連続空振りは 1 Invocation 内の暴走なので temp: スコープに置き、次のユーザー入力では持ち越さない。"""
+        limiter = ExecutionLimiter()
+        state: dict = {}
+        limiter.record_result(_tool("search"), {}, _ctx(state), {"status": "error", "error": "x"})
+        streak_keys = [k for k in state if "unproductive" in k]
+        assert streak_keys and all(k.startswith("temp:") for k in streak_keys)
+
+    @pytest.mark.parametrize(
+        ("response", "expected"),
+        [
+            ({"status": "success", "results": [], "total": 0}, True),
+            ({"status": "success", "results": []}, True),
+            ({"status": "success", "total": 0}, True),
+            ({"status": "error", "error": "見つかりません"}, True),
+            ({"status": "approval_required"}, True),
+            ({"status": "success", "results": [{"id": 1}], "total": 1}, False),
+            ({"status": "success", "record": {"id": "REC-100"}}, False),
+            # status 規約に従わないツール（MCP / RAG / AgentTool）は判定できる形だけ見る。誤検知で正常なツールを止めない
+            ({"content": [{"type": "text", "text": "ok"}], "isError": False}, False),  # MCP 正常
+            ({"content": [{"type": "text", "text": "boom"}], "isError": True}, True),  # MCP エラー
+            ({"content": []}, False),  # MCP・isError 無し
+            ({"result": "RAG の要約テキスト"}, False),  # ADK が非 dict 戻り値を包んだ形
+            ("not a dict", False),
+            (["chunk1", "chunk2"], False),
+        ],
+    )
+    def test_is_unproductive(self, response, expected):
+        assert is_unproductive(response) is expected
+
+    def test_mcp_like_tool_is_not_blocked_after_successes(self):
+        """status キーを持たない MCP ツールの正常応答 3 回で 4 回目が止まってはいけない（誤検知防止）。"""
+        limiter = ExecutionLimiter(max_calls_per_session=50, max_calls_per_tool=50, max_unproductive_streak=3)
+        state: dict = {}
+        ctx = _ctx(state)
+        mcp_ok = {"content": [{"type": "text", "text": "ok"}], "isError": False}
+        for i in range(3):
+            assert limiter.check_limit(_tool("mcp_read"), {"i": i}, ctx) is None
+            limiter.record_result(_tool("mcp_read"), {"i": i}, ctx, mcp_ok)
+        assert limiter.check_limit(_tool("mcp_read"), {"i": 3}, ctx) is None
+
+    def test_identical_args_history_is_temp_scoped(self):
+        """同一引数ループの履歴も 1 Invocation 内。同じ質問を数ターン聞き直してもループ扱いしない。"""
+        limiter = ExecutionLimiter(loop_window=3)
+        state: dict = {}
+        limiter.check_limit(_tool("a"), {"q": "same"}, _ctx(state))
+        assert all(k.startswith("temp:") for k in state if "history" in k)
 
 
 class TestApproval:

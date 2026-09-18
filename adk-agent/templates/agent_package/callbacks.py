@@ -247,6 +247,11 @@ def limit_tool_calls(tool: BaseTool, args: dict, tool_context: Context) -> Optio
     return limiter.check_limit(tool, args, tool_context)
 
 
+def record_tool_result(tool: BaseTool, args: dict, tool_context: Context, tool_response: dict) -> Optional[dict]:
+    """ツール結果の進展有無を記録する（連続空振り検知の材料。差し替えは行わない）。"""
+    return limiter.record_result(tool, args, tool_context, tool_response)
+
+
 def validate_tool_args(tool: BaseTool, args: dict, tool_context: Context) -> Optional[dict]:
     """引数の基本検証（パストラバーサル・危険な SQL）。"""
     path = args.get("path") or args.get("file_path")
@@ -335,4 +340,9 @@ default_before_tool = compose_before_tool_callbacks(
     validate_tool_args,
     limit_tool_calls,       # 拒否された呼び出しを数えないよう最後に置く
 )
-default_after_tool = compose_after_tool_callbacks(audit_after_tool, sanitize_tool_result, trim_tool_result)
+default_after_tool = compose_after_tool_callbacks(
+    audit_after_tool,
+    record_tool_result,     # 空振り / エラーの連続を数える（上限超過で拒否された結果もここを通る）
+    sanitize_tool_result,
+    trim_tool_result,
+)
