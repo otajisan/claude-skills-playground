@@ -57,8 +57,19 @@ def _args_signature(args: dict) -> str:
     return json.dumps(args, ensure_ascii=False, sort_keys=True, default=str)
 
 
+def _is_approved_for(approved_raw: str, args: dict) -> bool:
+    approved = json.loads(approved_raw)
+    return approved.get("args_signature") == _args_signature(args) and datetime.fromisoformat(
+        approved["expires_at"]
+    ) >= datetime.now(timezone.utc)
+
+
 def check_approval(tool: BaseTool, args: dict, tool_context: Context) -> Optional[dict]:
-    """ツール実行前の承認チェック（before_tool_callback）。"""
+    """ツール実行前の承認チェック（before_tool_callback）。
+
+    承認済み（同一引数・期限内）なら通すだけで、フラグは消費しない。後続の検査（引数検証・実行回数制限）で
+    拒否されると承認が無駄になるため、消費は合成の最後に置く consume_approval が行う。
+    """
     rule = APPROVAL_RULES.get(tool.name)
     if rule is None or not rule.condition(args):
         return None
@@ -66,13 +77,9 @@ def check_approval(tool: BaseTool, args: dict, tool_context: Context) -> Optiona
     flag = _approval_flag(tool.name)
     approved_raw = tool_context.state.get(flag)
     if approved_raw:
-        approved = json.loads(approved_raw)
-        tool_context.state[flag] = None  # 1 回限りの承認（別引数・期限切れでも消費して再承認を求める）
-        if (
-            approved.get("args_signature") == _args_signature(args)
-            and datetime.fromisoformat(approved["expires_at"]) >= datetime.now(timezone.utc)
-        ):
+        if _is_approved_for(approved_raw, args):
             return None
+        tool_context.state[flag] = None  # 別引数・期限切れの承認は破棄して再承認を求める
 
     request_id = str(uuid.uuid4())[:8]
     now = datetime.now(timezone.utc)
@@ -96,6 +103,22 @@ def check_approval(tool: BaseTool, args: dict, tool_context: Context) -> Optiona
             f"承認する場合は「承認: {request_id}」、取り消す場合は「拒否: {request_id}」と入力してください。"
         ),
     }
+
+
+def consume_approval(tool: BaseTool, args: dict, tool_context: Context) -> Optional[dict]:
+    """承認フラグを消費する（1 回限りの承認）。before_tool_callback の合成の **最後** に置く。
+
+    ここまで到達した呼び出しはツールが実際に実行されるので、そのときだけ承認を使い切る。
+    承認不要な呼び出し（ルール外ツール・条件不一致・別引数）は別の承認を巻き込まないよう触らない。常に None。
+    """
+    rule = APPROVAL_RULES.get(tool.name)
+    if rule is None or not rule.condition(args):
+        return None
+    flag = _approval_flag(tool.name)
+    approved_raw = tool_context.state.get(flag)
+    if approved_raw and _is_approved_for(approved_raw, args):
+        tool_context.state[flag] = None
+    return None
 
 
 def handle_approval_input(callback_context: Context, llm_request: LlmRequest) -> Optional[LlmResponse]:

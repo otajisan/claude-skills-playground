@@ -112,7 +112,7 @@ adk eval ./my_agent persona_set --config_file_path eval_config.json --print_deta
 
 ## CI 統合
 
-`.github/workflows/agent-eval.yml`（`templates/ci/`）: PR で `adk eval` を複数セット実行 → `scripts/check_eval_thresholds.py` で閾値未達なら `sys.exit(1)` → マージブロック。Cloud Build なら pytest → adk eval → adk deploy の順で品質ゲートにする。
+`.github/workflows/agent-eval.yml`（`templates/ci/`）: PR で `adk eval` を複数セット実行 → `scripts/check_eval_thresholds.py` で閾値未達なら `sys.exit(1)` → マージブロック。閾値チェックのステップには `if: ${{ !cancelled() && steps.eval.outcome != 'skipped' }}` を付ける（`adk eval` は閾値未達で exit 1 するため、付けないと内訳が必要な場面でステップが飛ぶ）。Cloud Build なら pytest → adk eval → adk deploy の順で品質ゲートにする。
 
 ## 関連アンチパターン
 

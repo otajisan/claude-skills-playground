@@ -9,7 +9,7 @@
 callbacks.py の既定合成に組み込まれているもの: approval / audit_logger / execution_limiter
 harden モードで先頭に追加するもの: kill_switch / escalation
   before_model: kill_switch → escalation → [既定: approval.handle_approval_input → rate_limit → injection → inject]
-  before_tool : kill_switch → escalation.restricted_tool → [既定: audit → RBAC → approval.check → 引数検証 → limiter.check_limit]
+  before_tool : kill_switch → escalation.restricted_tool → [既定: audit → RBAC → approval.check → 引数検証 → limiter.check_limit → approval.consume]
   after_tool  : [既定: audit → limiter.record_result → sanitize → trim]
 ExecutionLimiter は唯一のカウンタ（check_limit / record_result の 2 フック）。二重に登録しない。
 """

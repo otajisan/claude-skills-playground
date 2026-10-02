@@ -24,6 +24,7 @@ jobs:
         run: python -m pytest tests -q
 
       - name: Run evaluation
+        id: eval
         shell: bash   # 明示すると -eo pipefail 付きで実行され、tee で adk eval の失敗が隠れない
         env:
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
@@ -36,4 +37,8 @@ jobs:
             --print_detailed_results | tee eval_results/output.log
 
       - name: Check thresholds
+        # adk eval は閾値未達のとき exit 1 で終わる。そのままだとこのステップが飛び、
+        # 「どのメトリクスがどれだけ足りないか」の内訳が出るべき場面で出ない。
+        # eval が実行された（skipped でない）なら成否を問わず走らせ、キャンセル時だけ止める
+        if: ${{ !cancelled() && steps.eval.outcome != 'skipped' }}
         run: python eval/check_eval_thresholds.py eval_results/ --config eval/eval_config.json

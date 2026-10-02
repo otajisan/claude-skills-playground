@@ -23,7 +23,7 @@ from google.adk.tools import BaseTool
 from google.genai import types
 
 from .config import config
-from .harden.approval import check_approval, handle_approval_input
+from .harden.approval import check_approval, consume_approval, handle_approval_input
 from .harden.audit_logger import audit_after_tool, audit_before_tool
 from .harden.execution_limiter import limiter
 from .state_keys import StateKeys, get_max_results, get_user_role
@@ -336,9 +336,10 @@ default_after_model = compose_after_model_callbacks(validate_response)
 default_before_tool = compose_before_tool_callbacks(
     audit_before_tool,
     authorize_tool_access,  # RBAC で拒否されるものは承認フローに進めない
-    check_approval,         # APPROVAL_RULES に一致すれば承認待ちにする
+    check_approval,         # APPROVAL_RULES に一致すれば承認待ちにする（承認済みなら通す。消費はしない）
     validate_tool_args,
-    limit_tool_calls,       # 拒否された呼び出しを数えないよう最後に置く
+    limit_tool_calls,       # 拒否された呼び出しを数えないよう検査の最後に置く
+    consume_approval,       # ここまで通った = 実行が確定した呼び出しでだけ承認を使い切る（必ず末尾）
 )
 default_after_tool = compose_after_tool_callbacks(
     audit_after_tool,

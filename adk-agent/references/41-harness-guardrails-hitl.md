@@ -46,7 +46,7 @@ PII マスク: メール `[EMAIL]`、電話 `[PHONE]`、マイナンバー、カ
 
 ### 実装パターン
 
-- **同期（before_tool_callback）**: `APPROVAL_RULES = {tool_name: {condition(args), message}}`。条件一致 & 未承認なら `_pending_approval` を State に保存して `{"status": "approval_required", "message": "承認する場合は「承認: <id>」と入力"}` を返してツールをスキップ。`before_model_callback` でユーザーの「承認: id」を検出して `_approval_<tool>` フラグを立て、次の呼び出しで通す。**承認対象ツールは `tools=` に登録しないと before_tool_callback が発火しない**
+- **同期（before_tool_callback）**: `APPROVAL_RULES = {tool_name: {condition(args), message}}`。条件一致 & 未承認なら `_pending_approval` を State に保存して `{"status": "approval_required", "message": "承認する場合は「承認: <id>」と入力"}` を返してツールをスキップ。`before_model_callback` でユーザーの「承認: id」を検出して `_approval_<tool>` フラグを立て、次の呼び出しで通す。**フラグの消費（1 回限り）は `before_tool_callback` 合成の末尾の `consume_approval` で行う**。`check_approval` の時点で消費すると、後続の引数検証・実行回数制限で拒否されたときに承認が無駄になり、ユーザーに再承認を強いる。**承認対象ツールは `tools=` に登録しないと before_tool_callback が発火しない**
 - **Workflow 組み込み**: `request_input` ツール（標準化）+ `@node(rerun_on_resume=True)` で中断・再開。A2A では `TASK_STATE_INPUT_REQUIRED` になる
 - **`LongRunningFunctionTool`**: 承認 ID を返して Runner を一時停止、function_response で再開。Slack 通知等と組み合わせる
 - **非同期承認**: Firestore 等に `approval_requests`（`status` / `approvers` / `decisions` / `expires_at` 24h）を作り承認者に通知。バッチ処理向け。日次 10 件未満なら Slack 通知で十分、増えたらダッシュボード

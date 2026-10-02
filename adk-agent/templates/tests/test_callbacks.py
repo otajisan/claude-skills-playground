@@ -174,6 +174,26 @@ class TestLimitToolCalls:
         assert result is not None and "上限" in result["error"]
 
 
+class TestApprovalSurvivesLaterRejection:
+    def test_limiter_rejection_does_not_burn_approval(self, state):
+        """承認済みの呼び出しが後続の実行回数上限で弾かれても、承認は消費されず再試行で通る。"""
+        blocked = default_before_tool(_tool("submit_expense"), {"amount": 800_000}, _ctx(state))
+        assert blocked["status"] == "approval_required"
+        default_before_model(_ctx(state), _request(f"承認: {blocked['request_id']}"))
+        assert state["_approval_submit_expense"]
+
+        # 上限に達した状態で再試行 → limiter が拒否するが、承認フラグは残る
+        state["_tool_calls_submit_expense"] = callbacks.config.max_tool_calls_per_tool
+        rejected = default_before_tool(_tool("submit_expense"), {"amount": 800_000}, _ctx(state))
+        assert rejected["status"] == "error" and "上限" in rejected["error"]
+        assert state["_approval_submit_expense"]
+
+        # 上限が解けた次の呼び出しで実行が許可され、そのときに初めて承認が消費される
+        state["_tool_calls_submit_expense"] = 0
+        assert default_before_tool(_tool("submit_expense"), {"amount": 800_000}, _ctx(state)) is None
+        assert state["_approval_submit_expense"] is None
+
+
 # --- after_tool -----------------------------------------------------------
 class TestRecordResultWiring:
     def test_default_after_tool_records_unproductive_streak(self, state):

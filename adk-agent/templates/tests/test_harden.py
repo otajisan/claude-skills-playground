@@ -9,7 +9,7 @@ import pytest
 from google.adk.models import LlmRequest
 from google.genai import types
 
-from my_agent.harden.approval import PENDING_KEY, check_approval, handle_approval_input
+from my_agent.harden.approval import PENDING_KEY, check_approval, consume_approval, handle_approval_input
 from my_agent.harden.audit_logger import audit_before_tool, mask_pii
 from my_agent.harden.escalation import EscalationLevel, EscalationManager, escalation_callback, escalation_mgr, restricted_tool_callback
 from my_agent.harden.execution_limiter import ExecutionLimiter, is_unproductive
@@ -194,9 +194,24 @@ class TestApproval:
         other = check_approval(_tool("submit_expense"), {"amount": 900_000}, _ctx(state))
         assert other["status"] == "approval_required" and state["_approval_submit_expense"] is None
         handle_approval_input(_ctx(state), _request(f"承認: {other['request_id']}"))
-        # 同じ引数なら通り、フラグは消費される
+        # 同じ引数なら通る。フラグはここでは消費せず（後続の検査で拒否されたら承認を無駄にしない）、
+        # 合成の最後に置く consume_approval が消費する
         assert check_approval(_tool("submit_expense"), {"amount": 900_000}, _ctx(state)) is None
+        assert state["_approval_submit_expense"]
+        assert consume_approval(_tool("submit_expense"), {"amount": 900_000}, _ctx(state)) is None
         assert state["_approval_submit_expense"] is None
+        # 消費後は再承認が必要
+        assert check_approval(_tool("submit_expense"), {"amount": 900_000}, _ctx(state))["status"] == "approval_required"
+
+    def test_consume_ignores_calls_that_do_not_need_approval(self):
+        """承認不要な引数での同名ツール呼び出しが、別の承認済みフラグを巻き込んで消費しない。"""
+        state: dict = {}
+        blocked = check_approval(_tool("submit_expense"), {"amount": 800_000}, _ctx(state))
+        handle_approval_input(_ctx(state), _request(f"承認: {blocked['request_id']}"))
+        assert consume_approval(_tool("submit_expense"), {"amount": 3000}, _ctx(state)) is None
+        assert state["_approval_submit_expense"]  # 閾値未満の呼び出しは無関係なので残る
+        assert consume_approval(_tool("get_record"), {}, _ctx(state)) is None  # ルール外ツールも触らない
+        assert state["_approval_submit_expense"]
 
     def test_rejection(self):
         state: dict = {}
