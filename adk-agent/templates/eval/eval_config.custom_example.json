@@ -1,0 +1,17 @@
+{
+  "criteria": {
+    "tool_trajectory_avg_score": 0.8,
+    "response_match_score": 0.6,
+    "domain_accuracy": 0.8
+  },
+  "custom_metrics": {
+    "domain_accuracy": {
+      "code_config": {"name": "eval.custom_metrics.domain_accuracy"},
+      "metric_info": {
+        "metric_name": "domain_accuracy",
+        "metric_value_info": {"interval": {"min_value": 0.0, "max_value": 1.0}},
+        "description": "応答内の数値（金額・件数）が参照応答と許容誤差 1% で一致するかを評価する"
+      }
+    }
+  }
+}

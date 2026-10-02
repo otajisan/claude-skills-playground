@@ -1,1 +1,6 @@
 .backups/
+.tmp/
+__pycache__/
+.env
+.envrc
+.DS_Store
